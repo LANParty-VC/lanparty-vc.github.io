@@ -18,12 +18,13 @@ import {
 
 // TODO: replace with your Firebase project config
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "SENDER_ID",
-  appId: "APP_ID"
+  apiKey: "AIzaSyBzVYrsnc8NAE-tr9XTEVbSeRY9GL2yHVg",
+  authDomain: "webtest-4943a.firebaseapp.com",
+  projectId: "webtest-4943a",
+  storageBucket: "webtest-4943a.firebasestorage.app",
+  messagingSenderId: "84924124626",
+  appId: "1:84924124626:web:4a7e0dd8a7627e8dec8c0b",
+  measurementId: "G-H05QBTLC36"
 };
 
 const app = initializeApp(firebaseConfig);
