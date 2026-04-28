@@ -23,28 +23,38 @@ const peerConnections = new Map();
 function setStatus(text, live = false) {
   statusEl.textContent = text;
   if (live) {
-    statusDot.classList.add("live");
+    statusDot.classList.add("lp-live");
   } else {
-    statusDot.classList.remove("live");
+    statusDot.classList.remove("lp-live");
   }
 }
 
 function renderPeers() {
   peersEl.innerHTML = "";
+
+  if (peerConnections.size === 0) {
+    const empty = document.createElement("div");
+    empty.className = "lp-peer-pill";
+    empty.textContent =
+      "No peers yet — share this room with someone on your network.";
+    peersEl.appendChild(empty);
+    return;
+  }
+
   for (const [id] of peerConnections.entries()) {
     const pill = document.createElement("div");
-    pill.className = "peer-pill";
+    pill.className = "lp-peer-pill";
 
     const avatar = document.createElement("div");
-    avatar.className = "peer-avatar";
+    avatar.className = "lp-peer-avatar";
     avatar.textContent = id === peerId ? "YOU" : id.slice(0, 2).toUpperCase();
 
     const labelMain = document.createElement("div");
-    labelMain.className = "peer-label-main";
+    labelMain.className = "lp-peer-label-main";
     labelMain.textContent = id === peerId ? "You" : "Peer";
 
     const labelSub = document.createElement("div");
-    labelSub.className = "peer-label-sub";
+    labelSub.className = "lp-peer-label-sub";
     labelSub.textContent = id.slice(0, 6);
 
     const labelWrap = document.createElement("div");
@@ -56,13 +66,6 @@ function renderPeers() {
     pill.appendChild(avatar);
     pill.appendChild(labelWrap);
     peersEl.appendChild(pill);
-  }
-
-  if (peerConnections.size === 0) {
-    const empty = document.createElement("div");
-    empty.className = "peer-pill";
-    empty.textContent = "No peers yet — share this room with someone on your network.";
-    peersEl.appendChild(empty);
   }
 }
 
