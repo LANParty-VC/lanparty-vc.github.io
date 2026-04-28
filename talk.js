@@ -10,8 +10,6 @@ const roomTitleEl = document.getElementById("room-title");
 const userLabelEl = document.getElementById("user-label");
 const statusEl = document.getElementById("status");
 const peersListEl = document.getElementById("peers-list");
-const eventsEl = document.getElementById("events");
-const selfMeterBarEl = document.getElementById("self-meter-bar");
 
 const muteBtn = document.getElementById("mute-btn");
 const deviceBtn = document.getElementById("device-btn");
@@ -31,7 +29,6 @@ async function init() {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
     statusEl.textContent = "Mic access denied.";
-    log("Mic access denied.");
     return;
   }
 
@@ -44,17 +41,13 @@ function setupUI() {
     isMuted = !isMuted;
     localStream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
     muteBtn.textContent = isMuted ? "Unmute" : "Mute";
-    log(isMuted ? "You muted your mic." : "You unmuted your mic.");
   };
 
   deviceBtn.onclick = async () => {
     try {
       const newStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       swapLocalStream(newStream);
-      log("Switched microphone.");
-    } catch (err) {
-      log("Failed to switch microphone.");
-    }
+    } catch {}
   };
 
   leaveBtn.onclick = () => cleanupAndLeave();
@@ -65,7 +58,6 @@ function setupWebSocket() {
 
   ws.onopen = () => {
     statusEl.textContent = "Connected to signaling";
-    log("Connected to signaling server.");
     createPeerConnection();
   };
 
@@ -75,7 +67,6 @@ function setupWebSocket() {
     switch (msg.type) {
       case "room-info":
         roomTitleEl.textContent = `Room: ${msg.code}`;
-        log(`Joined network room ${msg.code}.`);
         break;
 
       case "peers":
@@ -98,7 +89,6 @@ function setupWebSocket() {
 
   ws.onclose = () => {
     statusEl.textContent = "Disconnected.";
-    log("Disconnected from signaling.");
   };
 }
 
@@ -142,9 +132,7 @@ async function handleIce(msg) {
   if (msg.candidate) {
     try {
       await pc.addIceCandidate(msg.candidate);
-    } catch (err) {
-      log("Failed to add ICE candidate.");
-    }
+    } catch {}
   }
 }
 
@@ -202,12 +190,11 @@ function attachSpeakingAnalyser(peerState, stream, isSelf) {
     const avg = data.reduce((a, b) => a + b, 0) / data.length;
 
     const speaking = avg > 40;
-    peerState.li.classList.toggle("lp-peer-speaking", speaking);
 
-    if (isSelf) {
-      const level = Math.min(100, (avg / 80) * 100);
-      selfMeterBarEl.style.width = `${level}%`;
-    }
+    peerState.li.classList.toggle(
+      isSelf ? "lp-speaking-self" : "lp-speaking-other",
+      speaking
+    );
 
     requestAnimationFrame(tick);
   }
@@ -233,11 +220,4 @@ function cleanupAndLeave() {
   pc?.close();
   localStream?.getTracks().forEach((t) => t.stop());
   window.location.href = "index.html";
-}
-
-function log(text) {
-  const line = document.createElement("div");
-  line.textContent = text;
-  eventsEl.appendChild(line);
-  eventsEl.scrollTop = eventsEl.scrollHeight;
 }

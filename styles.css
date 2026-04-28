@@ -402,7 +402,14 @@ body.lp-body {
     order: 2;
   }
 }
-.lp-peer-speaking {
-  border-color: #4f46e5;
-  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.7);
+/* YOU speaking = blue glow */
+.lp-speaking-self {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.8);
+}
+
+/* OTHERS speaking = purple glow */
+.lp-speaking-other {
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.8);
 }
