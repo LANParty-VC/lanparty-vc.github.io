@@ -1,13 +1,13 @@
-// talk.js — LANParty VC (WebSocket Signaling)
+// talk.js — LANParty VC (WebSocket Signaling, Discord-style UI)
 
 const joinBtn = document.getElementById("joinBtn");
 const leaveBtn = document.getElementById("leaveBtn");
 const muteBtn = document.getElementById("muteBtn");
+const homeBtn = document.getElementById("homeBtn");
 const statusEl = document.getElementById("status");
+const statusDot = document.getElementById("statusDot");
 const peersEl = document.getElementById("peers");
-const logEl = document.getElementById("log");
 const roomIdEl = document.getElementById("roomId");
-const homeBtn = document.getElementById("homeBtn"); // NEW
 
 const urlParams = new URLSearchParams(window.location.search);
 const roomId = urlParams.get("room");
@@ -20,31 +20,49 @@ let joined = false;
 
 const peerConnections = new Map();
 
-function log(msg) {
-  console.log(msg);
-  logEl.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
-  logEl.scrollTop = logEl.scrollHeight;
-}
-
-function setStatus(text) {
+function setStatus(text, live = false) {
   statusEl.textContent = text;
+  if (live) {
+    statusDot.classList.add("live");
+  } else {
+    statusDot.classList.remove("live");
+  }
 }
 
 function renderPeers() {
   peersEl.innerHTML = "";
   for (const [id] of peerConnections.entries()) {
-    const div = document.createElement("div");
-    div.className = "peer";
+    const pill = document.createElement("div");
+    pill.className = "peer-pill";
 
-    const dot = document.createElement("div");
-    dot.className = "peer-dot";
+    const avatar = document.createElement("div");
+    avatar.className = "peer-avatar";
+    avatar.textContent = id === peerId ? "YOU" : id.slice(0, 2).toUpperCase();
 
-    const label = document.createElement("span");
-    label.textContent = id === peerId ? "You" : id.slice(0, 6);
+    const labelMain = document.createElement("div");
+    labelMain.className = "peer-label-main";
+    labelMain.textContent = id === peerId ? "You" : "Peer";
 
-    div.appendChild(dot);
-    div.appendChild(label);
-    peersEl.appendChild(div);
+    const labelSub = document.createElement("div");
+    labelSub.className = "peer-label-sub";
+    labelSub.textContent = id.slice(0, 6);
+
+    const labelWrap = document.createElement("div");
+    labelWrap.style.display = "flex";
+    labelWrap.style.flexDirection = "column";
+    labelWrap.appendChild(labelMain);
+    labelWrap.appendChild(labelSub);
+
+    pill.appendChild(avatar);
+    pill.appendChild(labelWrap);
+    peersEl.appendChild(pill);
+  }
+
+  if (peerConnections.size === 0) {
+    const empty = document.createElement("div");
+    empty.className = "peer-pill";
+    empty.textContent = "No peers yet — share this room with someone on your network.";
+    peersEl.appendChild(empty);
   }
 }
 
@@ -58,7 +76,7 @@ function createPeerConnection(remoteId) {
   }
 
   pc.onicecandidate = (event) => {
-    if (event.candidate) {
+    if (event.candidate && ws) {
       ws.send(JSON.stringify({
         type: "candidate",
         from: peerId,
@@ -73,7 +91,6 @@ function createPeerConnection(remoteId) {
     audio.autoplay = true;
     audio.srcObject = event.streams[0];
     document.body.appendChild(audio);
-    log(`Audio from ${remoteId}`);
   };
 
   pc.onconnectionstatechange = () => {
@@ -103,18 +120,22 @@ async function join() {
   );
 
   ws.onerror = () => {
-    log("WebSocket error — cannot connect to signaling server");
+    console.log("WebSocket error — cannot connect to signaling server");
     alert("Failed to connect to signaling server.");
   };
 
   ws.onopen = () => {
-    log("Connected to signaling server");
+    console.log("Connected to signaling server");
 
     joined = true;
     joinBtn.disabled = true;
     leaveBtn.disabled = false;
     muteBtn.disabled = false;
-    setStatus("In voice");
+    setStatus("In voice", true);
+
+    // Add self to peers list
+    peerConnections.set(peerId, null);
+    renderPeers();
   };
 
   ws.onmessage = async (event) => {
@@ -122,6 +143,11 @@ async function join() {
 
     if (msg.type === "peer-join") {
       const id = msg.peerId;
+      if (!peerConnections.has(id)) {
+        peerConnections.set(id, null);
+        renderPeers();
+      }
+
       if (peerId < id) {
         const pc = createPeerConnection(id);
         const offer = await pc.createOffer();
@@ -172,13 +198,11 @@ async function join() {
 function leave() {
   if (!joined) return;
 
-  log("Leaving voice room");
-
   if (ws) ws.close();
   ws = null;
 
-  for (const [id, pc] of peerConnections.entries()) {
-    pc.close();
+  for (const [, pc] of peerConnections.entries()) {
+    if (pc) pc.close();
   }
   peerConnections.clear();
   renderPeers();
@@ -192,7 +216,9 @@ function leave() {
   joinBtn.disabled = false;
   leaveBtn.disabled = true;
   muteBtn.disabled = true;
-  setStatus("Idle");
+  muted = false;
+  muteBtn.textContent = "Mute";
+  setStatus("Idle", false);
 }
 
 function toggleMute() {
@@ -200,18 +226,18 @@ function toggleMute() {
   muted = !muted;
   localStream.getAudioTracks().forEach(t => t.enabled = !muted);
   muteBtn.textContent = muted ? "Unmute" : "Mute";
-  log(muted ? "Muted" : "Unmuted");
 }
 
-roomIdEl.textContent = "Room: " + roomId.slice(0, 12) + "…";
+roomIdEl.querySelector("span").textContent = roomId
+  ? roomId.slice(0, 12) + "…"
+  : "Unknown";
 
 joinBtn.onclick = join;
 leaveBtn.onclick = leave;
 muteBtn.onclick = toggleMute;
-
-// NEW: Back to Home button
 homeBtn.onclick = () => {
   window.location.href = "https://lanparty-vc.github.io";
 };
 
-setStatus("Idle");
+setStatus("Idle", false);
+renderPeers();
