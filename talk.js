@@ -98,8 +98,8 @@ async function join() {
   }
 
   ws = new WebSocket(
-    `wss://lanpartyvc-signal.arahomeschool23.workers.dev/?room=${roomId}&peer=${peerId}`
-  );
+  `wss://lanpartyvc-signal.arahomeschool23.workers.dev/?room=${roomId}&peer=${peerId}`
+);
 
   ws.onopen = () => {
     log("Connected to signaling server");
