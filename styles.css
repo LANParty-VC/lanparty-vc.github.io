@@ -1,19 +1,33 @@
+/* ============================================================
+   ROOT VARIABLES
+   ============================================================ */
+
 :root {
   color-scheme: dark;
+
   --bg: #020617;
-  --bg-elevated: rgba(10, 16, 35, 0.96);
-  --accent: #4f46e5;
-  --accent-soft: rgba(79, 70, 229, 0.18);
+  --glass: rgba(0, 0, 0, 0.25);
+  --glass-strong: rgba(0, 0, 0, 0.45);
+
+  --accent: #6366f1;
+  --accent-strong: #4f46e5;
   --danger: #ef4444;
+
   --text: #f9fafb;
   --muted: #9ca3af;
-  --border: #1f2937;
-  --radius-lg: 18px;
-  --radius-md: 12px;
-  --shadow-soft: 0 22px 60px rgba(0, 0, 0, 0.7);
+
+  --radius-lg: 20px;
+  --radius-md: 14px;
+
   --transition-fast: 140ms ease-out;
-  --transition-med: 200ms ease-out;
+  --transition-med: 220ms ease-out;
+
+  --shadow-soft: 0 22px 60px rgba(0, 0, 0, 0.7);
 }
+
+/* ============================================================
+   GLOBAL RESET
+   ============================================================ */
 
 *,
 *::before,
@@ -21,330 +35,250 @@
   box-sizing: border-box;
 }
 
-
-/* Starfield background */
-
-.lp-stars,
-.lp-stars-2,
-.lp-stars-3 {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-repeat: repeat;
-  opacity: 0.4;
-  z-index: 0;
-}
-
-.lp-stars {
-  background-image: radial-gradient(2px 2px at 20px 30px, #ffffff 0, transparent 60%),
-    radial-gradient(2px 2px at 80px 120px, #e5e7eb 0, transparent 60%),
-    radial-gradient(2px 2px at 200px 80px, #cbd5f5 0, transparent 60%);
-  animation: starScroll 60s linear infinite;
-}
-
-.lp-stars-2 {
-  background-image: radial-gradient(1.5px 1.5px at 40px 60px, #a5b4fc 0, transparent 60%),
-    radial-gradient(1.5px 1.5px at 160px 200px, #f9a8d4 0, transparent 60%);
-  animation: starScroll 90s linear infinite reverse;
-  opacity: 0.25;
-}
-
-.lp-stars-3 {
-  background-image: radial-gradient(1px 1px at 10px 10px, #facc15 0, transparent 60%),
-    radial-gradient(1px 1px at 220px 140px, #22c55e 0, transparent 60%);
-  animation: starScroll 120s linear infinite;
-  opacity: 0.18;
-}
-
-@keyframes starScroll {
-  from {
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    transform: translate3d(-200px, -400px, 0);
-  }
-}
-
-/* Layout shell */
-
-.lp-shell {
-  position: relative;
-  z-index: 1;
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 20px 18px 24px;
-}
-
-.lp-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
-}
-
-.lp-logo {
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-size: 0.9rem;
-  color: #e5e7eb;
-}
-
-.lp-topbar-right {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.lp-pill {
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
-.lp-pill-soft {
-  background: rgba(15, 23, 42, 0.9);
-}
-
-.lp-main-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 16px;
-}
-
-.lp-hero-title {
-  margin: 0 0 6px;
-  font-size: 1.9rem;
-  letter-spacing: 0.02em;
-}
-
-.lp-hero-subtitle {
-  margin: 0 0 18px;
-  color: var(--muted);
-  font-size: 0.95rem;
-}
-
 body.lp-body {
   margin: 0;
   min-height: 100vh;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
     "Segoe UI", sans-serif;
-  background: transparent; /* IMPORTANT */
+  background: transparent;
   color: var(--text);
   overflow-x: hidden;
+
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 40px;
 }
+
+/* ============================================================
+   STARFIELD CANVAS (REAL 3D STARFIELD)
+   ============================================================ */
+
+.lp-starfield {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: #020617;
+  pointer-events: none;
+}
+
+/* Remove old CSS star layers */
+.lp-stars,
+.lp-stars-2,
+.lp-stars-3 {
+  display: none !important;
+}
+
+/* ============================================================
+   GLASS PANELS
+   ============================================================ */
 
 .lp-shell,
 .lp-container {
-  background: rgba(0, 0, 0, 0.25); /* translucent */
-  backdrop-filter: blur(18px) brightness(0.8); /* glass effect */
-  border-radius: 20px;
+  width: 100%;
+  max-width: 1120px;
+
+  background: var(--glass);
+  backdrop-filter: blur(22px) brightness(0.85);
+  border-radius: var(--radius-lg);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 20px;
+  padding: 24px;
   position: relative;
   z-index: 1;
+  box-shadow: var(--shadow-soft);
+  animation: fadeIn 0.4s ease-out;
 }
 
 .lp-card {
-  background: rgba(0, 0, 0, 0.35); /* translucent */
-  backdrop-filter: blur(14px) brightness(0.9);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 18px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(18px) brightness(0.9);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 20px;
   position: relative;
   z-index: 1;
+  animation: fadeIn 0.4s ease-out;
 }
 
-.lp-card-hero {
-  margin-top: 10px;
+/* ============================================================
+   FIX: talk.html wrappers that were blocking the starfield
+   ============================================================ */
+
+.lp-main,
+.lp-header,
+.lp-list {
+  background: transparent !important;
+  backdrop-filter: none !important;
 }
 
-.lp-label {
-  display: block;
-  font-size: 0.85rem;
+/* ============================================================
+   TOP BAR
+   ============================================================ */
+
+.lp-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.lp-logo {
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 1rem;
+  color: #e5e7eb;
+}
+
+.lp-pill {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  font-size: 0.75rem;
   color: var(--muted);
-  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+}
+
+/* ============================================================
+   INDEX PAGE
+   ============================================================ */
+
+.lp-main-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 20px;
+}
+
+.lp-hero-title {
+  margin: 0 0 8px;
+  font-size: 2.2rem;
+  font-weight: 700;
+}
+
+.lp-hero-subtitle {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 1rem;
 }
 
 .lp-input {
   margin-top: 6px;
   width: 100%;
-  padding: 10px 11px;
+  padding: 12px 14px;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(55, 65, 81, 0.9);
-  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.45);
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 1rem;
   outline: none;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
-    background var(--transition-fast), transform var(--transition-fast);
+  transition: var(--transition-fast);
 }
 
 .lp-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.6);
-  background: #020617;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.6);
   transform: translateY(-1px);
 }
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
 
 .lp-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 9px 16px;
+  padding: 11px 20px;
   border-radius: 999px;
   border: none;
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast),
-    filter var(--transition-fast), background var(--transition-fast);
+  transition: var(--transition-fast);
 }
 
 .lp-button-primary {
-  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
   color: white;
-  box-shadow: 0 16px 36px rgba(79, 70, 229, 0.7);
+  box-shadow: 0 12px 28px rgba(99, 102, 241, 0.5);
 }
 
 .lp-button-secondary {
-  background: rgba(15, 23, 42, 0.95);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--muted);
-  border: 1px solid rgba(55, 65, 81, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .lp-button-danger {
-  background: linear-gradient(135deg, #ef4444, #f97373);
+  background: linear-gradient(135deg, #ef4444, #dc2626);
   color: white;
-  box-shadow: 0 16px 36px rgba(239, 68, 68, 0.7);
+  box-shadow: 0 12px 28px rgba(239, 68, 68, 0.5);
 }
 
 .lp-button:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.05);
+  transform: translateY(-2px);
+  filter: brightness(1.1);
 }
 
 .lp-button:active {
   transform: translateY(0);
-  box-shadow: none;
 }
 
-.lp-sidecard {
-  align-self: stretch;
-}
-
-.lp-section-title {
-  margin: 0 0 10px;
-  font-size: 0.85rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.lp-bullets {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 14px;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.lp-bullets li {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.lp-bullets span:first-child {
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.lp-mini-note {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-/* Call page layout */
-
-.lp-container {
-  position: relative;
-  z-index: 1;
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 20px 18px 24px;
-}
-
-.lp-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
-  gap: 12px;
-}
+/* ============================================================
+   TALK PAGE
+   ============================================================ */
 
 .lp-title {
-  margin: 0 0 4px;
-  font-size: 1.4rem;
+  margin: 0 0 6px;
+  font-size: 1.6rem;
+  font-weight: 700;
 }
 
 .lp-subtitle {
   margin: 0;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .lp-main {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 14px;
+  gap: 20px;
 }
 
-.lp-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-/* Participant cards (A + C combined) */
+/* ============================================================
+   PARTICIPANT CARDS
+   ============================================================ */
 
 .lp-peer-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border-radius: 14px;
-  background: rgba(15, 23, 42, 0.9);
-  border: 1px solid rgba(31, 41, 55, 0.9);
-  margin-bottom: 8px;
-  transition: border-color var(--transition-med), box-shadow var(--transition-med),
-    transform var(--transition-fast), background var(--transition-med);
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px) brightness(0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  margin-bottom: 10px;
+  transition: var(--transition-med);
 }
 
 .lp-peer-avatar {
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
-  background: radial-gradient(circle at 30% 20%, #e5e7eb 0, #4b5563 40%, #020617 100%);
-  border: 1px solid rgba(148, 163, 184, 0.7);
-  flex-shrink: 0;
-}
-
-.lp-peer-main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+  background: radial-gradient(circle at 30% 20%, #ffffff 0, #4b5563 40%, #020617 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .lp-peer-name {
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 .lp-peer-meta {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   color: var(--muted);
 }
 
@@ -352,60 +286,129 @@ body.lp-body {
 
 .lp-speaking-self {
   border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.9);
-  transform: translateY(-1px);
-  background: radial-gradient(circle at top left, #1d2a4f 0, #020617 55%);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
+  transform: translateY(-2px);
 }
 
 .lp-speaking-other {
   border-color: #a855f7 !important;
-  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.9);
-  transform: translateY(-1px);
-  background: radial-gradient(circle at top left, #3b1f5f 0, #020617 55%);
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.8);
+  transform: translateY(-2px);
 }
 
-/* Audio section */
+/* ============================================================
+   AUDIO PANEL
+   ============================================================ */
 
 .lp-audio-controls {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .lp-status {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   color: var(--muted);
 }
 
-/* Responsive */
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
 
 @media (max-width: 900px) {
-  .lp-main-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
+  .lp-main-layout,
   .lp-main {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 1fr;
   }
 }
-.lp-peer-card {
-  background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(10px) brightness(0.9);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  padding: 10px;
+/* ============================================================
+   HOW IT WORKS — Modernized
+   ============================================================ */
+
+.lp-how-title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.lp-bullets {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.lp-bullets li {
   display: flex;
-  gap: 10px;
-  transition: 150ms ease;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.95rem;
+  color: var(--text);
+  line-height: 1.45;
+  position: relative;
+  padding-left: 4px;
 }
-.lp-starfield {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: #020617;
+
+.lp-bullets li::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: radial-gradient(circle, #818cf8 0%, #4f46e5 60%, transparent 100%);
+  box-shadow: 0 0 8px #6366f1;
+  flex-shrink: 0;
+  margin-top: 4px;
+  animation: pulseDot 2.4s infinite ease-in-out;
 }
-.lp-starfield {
-  pointer-events: none; /* prevents blocking clicks */
+
+@keyframes pulseDot {
+  0% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.4); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.9; }
+}
+
+.lp-bullets span {
+  font-weight: 600;
+  color: #a5b4fc;
+}
+
+.lp-mini-note {
+  margin-top: 16px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+/* Optional: subtle glowing border around the whole card */
+.lp-sidecard {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 22px rgba(99, 102, 241, 0.15);
+  transition: 200ms ease;
+}
+
+.lp-sidecard:hover {
+  box-shadow: 0 0 28px rgba(99, 102, 241, 0.25);
 }
