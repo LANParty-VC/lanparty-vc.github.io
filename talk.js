@@ -97,12 +97,24 @@ async function join() {
     return;
   }
 
+  // FIXED: WebSocket URL MUST include peer=
   ws = new WebSocket(
-  `wss://lanpartyvc-signal.arahomeschool23.workers.dev/?room=${roomId}&peer=${peerId}`
-);
+    `wss://lanpartyvc-signal.arahomeschool23.workers.dev/?room=${roomId}&peer=${peerId}`
+  );
+
+  ws.onerror = () => {
+    log("WebSocket error — cannot connect to signaling server");
+    alert("Failed to connect to signaling server.");
+  };
 
   ws.onopen = () => {
     log("Connected to signaling server");
+
+    joined = true;
+    joinBtn.disabled = true;
+    leaveBtn.disabled = false;
+    muteBtn.disabled = false;
+    setStatus("In voice");
   };
 
   ws.onmessage = async (event) => {
@@ -155,18 +167,14 @@ async function join() {
       if (pc) await pc.addIceCandidate(msg.candidate);
     }
   };
-
-  joined = true;
-  joinBtn.disabled = true;
-  leaveBtn.disabled = false;
-  muteBtn.disabled = false;
-  setStatus("In voice");
 }
 
 function leave() {
   if (!joined) return;
 
-  ws.close();
+  log("Leaving voice room");
+
+  if (ws) ws.close();
   ws = null;
 
   for (const [id, pc] of peerConnections.entries()) {
@@ -192,6 +200,7 @@ function toggleMute() {
   muted = !muted;
   localStream.getAudioTracks().forEach(t => t.enabled = !muted);
   muteBtn.textContent = muted ? "Unmute" : "Mute";
+  log(muted ? "Muted" : "Unmuted");
 }
 
 roomIdEl.textContent = "Room: " + roomId.slice(0, 12) + "…";
