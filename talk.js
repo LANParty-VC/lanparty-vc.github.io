@@ -10,13 +10,14 @@ const roomTitleEl = document.getElementById("room-title");
 const userLabelEl = document.getElementById("user-label");
 const statusEl = document.getElementById("status");
 const peersListEl = document.getElementById("peers-list");
+const eventsEl = document.getElementById("events");
+const selfMeterBarEl = document.getElementById("self-meter-bar");
+
 const muteBtn = document.getElementById("mute-btn");
 const deviceBtn = document.getElementById("device-btn");
 const leaveBtn = document.getElementById("leave-btn");
-const eventsEl = document.getElementById("log") || document.getElementById("events"); // whichever you used
 
-// speaking state: peerId -> { li, analyser, source, self }
-const speakingState = new Map();
+const speakingState = new Map(); // peerId -> { li, analyser, source, self }
 
 init();
 
@@ -25,7 +26,6 @@ async function init() {
   nickname = params.get("nick") || "Guest";
 
   userLabelEl.textContent = `You are: ${nickname}`;
-  roomTitleEl.textContent = `Room: null`; // will be updated by server if you want
 
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -57,17 +57,7 @@ function setupUI() {
     }
   };
 
-  leaveBtn.onclick = () => {
-    cleanupAndLeave();
-  };
-
-  window.addEventListener("beforeunload", () => {
-    try {
-      ws?.close();
-      pc?.close();
-      localStream?.getTracks().forEach((t) => t.stop());
-    } catch {}
-  });
+  leaveBtn.onclick = () => cleanupAndLeave();
 }
 
 function setupWebSocket() {
@@ -87,15 +77,19 @@ function setupWebSocket() {
         roomTitleEl.textContent = `Room: ${msg.code}`;
         log(`Joined network room ${msg.code}.`);
         break;
+
       case "peers":
         updatePeers(msg.peers);
         break;
+
       case "offer":
         await handleOffer(msg);
         break;
+
       case "answer":
         await handleAnswer(msg);
         break;
+
       case "ice":
         await handleIce(msg);
         break;
@@ -105,11 +99,6 @@ function setupWebSocket() {
   ws.onclose = () => {
     statusEl.textContent = "Disconnected.";
     log("Disconnected from signaling.");
-  };
-
-  ws.onerror = () => {
-    statusEl.textContent = "Signaling error.";
-    log("Signaling error.");
   };
 }
 
@@ -126,9 +115,7 @@ function createPeerConnection() {
   };
 
   pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      send({ type: "ice", candidate: event.candidate });
-    }
+    if (event.candidate) send({ type: "ice", candidate: event.candidate });
   };
 
   makeOffer();
@@ -162,7 +149,7 @@ async function handleIce(msg) {
 }
 
 function send(obj) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(obj));
   }
 }
@@ -184,27 +171,21 @@ function updatePeers(peers) {
     });
   });
 
-  // attach analyser for self
   const selfPeer = [...speakingState.values()].find((s) => s.self);
-  if (selfPeer && localStream) {
-    attachSpeakingAnalyser(selfPeer, localStream);
-  }
+  if (selfPeer) attachSpeakingAnalyser(selfPeer, localStream, true);
 }
 
 function attachRemoteStream(stream) {
   const audio = document.createElement("audio");
   audio.autoplay = true;
-  audio.playsInline = true;
   audio.srcObject = stream;
   document.body.appendChild(audio);
 
   const remotePeer = [...speakingState.values()].find((s) => !s.self);
-  if (remotePeer) {
-    attachSpeakingAnalyser(remotePeer, stream);
-  }
+  if (remotePeer) attachSpeakingAnalyser(remotePeer, stream, false);
 }
 
-function attachSpeakingAnalyser(peerState, stream) {
+function attachSpeakingAnalyser(peerState, stream, isSelf) {
   const ctx = new AudioContext();
   const source = ctx.createMediaStreamSource(stream);
   const analyser = ctx.createAnalyser();
@@ -219,9 +200,15 @@ function attachSpeakingAnalyser(peerState, stream) {
   function tick() {
     analyser.getByteFrequencyData(data);
     const avg = data.reduce((a, b) => a + b, 0) / data.length;
-    const speaking = avg > 40; // tweak threshold
 
+    const speaking = avg > 40;
     peerState.li.classList.toggle("lp-peer-speaking", speaking);
+
+    if (isSelf) {
+      const level = Math.min(100, (avg / 80) * 100);
+      selfMeterBarEl.style.width = `${level}%`;
+    }
+
     requestAnimationFrame(tick);
   }
 
@@ -233,30 +220,22 @@ function swapLocalStream(newStream) {
   localStream = newStream;
 
   localStream.getTracks().forEach((track) => {
-    const sender = pc
-      .getSenders()
-      .find((s) => s.track && s.track.kind === track.kind);
+    const sender = pc.getSenders().find((s) => s.track && s.track.kind === track.kind);
     if (sender) sender.replaceTrack(track);
   });
 
   const selfPeer = [...speakingState.values()].find((s) => s.self);
-  if (selfPeer) {
-    attachSpeakingAnalyser(selfPeer, localStream);
-  }
+  if (selfPeer) attachSpeakingAnalyser(selfPeer, localStream, true);
 }
 
 function cleanupAndLeave() {
-  try {
-    ws?.close();
-    pc?.close();
-    localStream?.getTracks().forEach((t) => t.stop());
-  } finally {
-    window.location.href = "index.html";
-  }
+  ws?.close();
+  pc?.close();
+  localStream?.getTracks().forEach((t) => t.stop());
+  window.location.href = "index.html";
 }
 
 function log(text) {
-  if (!eventsEl) return;
   const line = document.createElement("div");
   line.textContent = text;
   eventsEl.appendChild(line);
