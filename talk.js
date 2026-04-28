@@ -7,6 +7,7 @@ const statusEl = document.getElementById("status");
 const peersEl = document.getElementById("peers");
 const logEl = document.getElementById("log");
 const roomIdEl = document.getElementById("roomId");
+const homeBtn = document.getElementById("homeBtn"); // NEW
 
 const urlParams = new URLSearchParams(window.location.search);
 const roomId = urlParams.get("room");
@@ -97,7 +98,6 @@ async function join() {
     return;
   }
 
-  // FIXED: WebSocket URL MUST include peer=
   ws = new WebSocket(
     `wss://lanpartyvc-signal.arahomeschool23.workers.dev/?room=${roomId}&peer=${peerId}`
   );
@@ -208,5 +208,10 @@ roomIdEl.textContent = "Room: " + roomId.slice(0, 12) + "…";
 joinBtn.onclick = join;
 leaveBtn.onclick = leave;
 muteBtn.onclick = toggleMute;
+
+// NEW: Back to Home button
+homeBtn.onclick = () => {
+  window.location.href = "https://lanparty-vc.github.io";
+};
 
 setStatus("Idle");
