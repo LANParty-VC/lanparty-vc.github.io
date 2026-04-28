@@ -6,15 +6,17 @@ let localStream;
 let nickname;
 let isMuted = false;
 
-const peersGridEl = document.getElementById("peers-grid");
-const statusDotEl = document.getElementById("status-dot");
-const statusTextEl = document.getElementById("status-text");
-const roomCodePillEl = document.getElementById("room-code-pill");
+const roomTitleEl = document.getElementById("room-title");
 const userLabelEl = document.getElementById("user-label");
-const selfMeterBarEl = document.getElementById("self-meter-bar");
-const logEl = document.getElementById("log");
+const statusEl = document.getElementById("status");
+const peersListEl = document.getElementById("peers-list");
+const muteBtn = document.getElementById("mute-btn");
+const deviceBtn = document.getElementById("device-btn");
+const leaveBtn = document.getElementById("leave-btn");
+const eventsEl = document.getElementById("log") || document.getElementById("events"); // whichever you used
 
-const speakingState = new Map(); // peerId -> { cardEl, analyser, source, self }
+// speaking state: peerId -> { li, analyser, source, self }
+const speakingState = new Map();
 
 init();
 
@@ -23,12 +25,12 @@ async function init() {
   nickname = params.get("nick") || "Guest";
 
   userLabelEl.textContent = `You are: ${nickname}`;
+  roomTitleEl.textContent = `Room: null`; // will be updated by server if you want
 
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
-    statusTextEl.textContent = "Mic access denied.";
-    statusDotEl.classList.add("lp-status-bad");
+    statusEl.textContent = "Mic access denied.";
     log("Mic access denied.");
     return;
   }
@@ -38,14 +40,14 @@ async function init() {
 }
 
 function setupUI() {
-  document.getElementById("mute-btn").onclick = () => {
+  muteBtn.onclick = () => {
     isMuted = !isMuted;
     localStream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
-    document.getElementById("mute-btn").textContent = isMuted ? "Unmute" : "Mute";
+    muteBtn.textContent = isMuted ? "Unmute" : "Mute";
     log(isMuted ? "You muted your mic." : "You unmuted your mic.");
   };
 
-  document.getElementById("device-btn").onclick = async () => {
+  deviceBtn.onclick = async () => {
     try {
       const newStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       swapLocalStream(newStream);
@@ -55,7 +57,7 @@ function setupUI() {
     }
   };
 
-  document.getElementById("leave-btn").onclick = () => {
+  leaveBtn.onclick = () => {
     cleanupAndLeave();
   };
 
@@ -72,9 +74,7 @@ function setupWebSocket() {
   ws = new WebSocket(`${SIGNAL_URL}/?nick=${encodeURIComponent(nickname)}`);
 
   ws.onopen = () => {
-    statusTextEl.textContent = "Connected to signaling";
-    statusDotEl.classList.remove("lp-status-bad");
-    statusDotEl.classList.add("lp-status-ok");
+    statusEl.textContent = "Connected to signaling";
     log("Connected to signaling server.");
     createPeerConnection();
   };
@@ -84,8 +84,8 @@ function setupWebSocket() {
 
     switch (msg.type) {
       case "room-info":
-        roomCodePillEl.textContent = `Room: #${msg.code}`;
-        log(`Joined network room #${msg.code}.`);
+        roomTitleEl.textContent = `Room: ${msg.code}`;
+        log(`Joined network room ${msg.code}.`);
         break;
       case "peers":
         updatePeers(msg.peers);
@@ -103,15 +103,12 @@ function setupWebSocket() {
   };
 
   ws.onclose = () => {
-    statusTextEl.textContent = "Disconnected.";
-    statusDotEl.classList.remove("lp-status-ok");
-    statusDotEl.classList.add("lp-status-bad");
+    statusEl.textContent = "Disconnected.";
     log("Disconnected from signaling.");
   };
 
   ws.onerror = () => {
-    statusTextEl.textContent = "Signaling error.";
-    statusDotEl.classList.add("lp-status-bad");
+    statusEl.textContent = "Signaling error.";
     log("Signaling error.");
   };
 }
@@ -132,10 +129,6 @@ function createPeerConnection() {
     if (event.candidate) {
       send({ type: "ice", candidate: event.candidate });
     }
-  };
-
-  pc.onconnectionstatechange = () => {
-    log(`WebRTC state: ${pc.connectionState}`);
   };
 
   makeOffer();
@@ -175,34 +168,16 @@ function send(obj) {
 }
 
 function updatePeers(peers) {
-  peersGridEl.innerHTML = "";
+  peersListEl.innerHTML = "";
   speakingState.clear();
 
   peers.forEach((p) => {
-    const card = document.createElement("div");
-    card.className = "lp-peer-card";
-    card.dataset.peerId = p.id;
-
-    const nameEl = document.createElement("div");
-    nameEl.className = "lp-peer-name";
-    nameEl.textContent = p.nick;
-
-    const metaEl = document.createElement("div");
-    metaEl.className = "lp-peer-meta";
-    metaEl.textContent = p.self === p.id ? "You" : "Connected";
-
-    const badge = document.createElement("div");
-    badge.className = "lp-peer-badge";
-    badge.textContent = p.self === p.id ? "Local" : "Remote";
-
-    card.appendChild(nameEl);
-    card.appendChild(metaEl);
-    card.appendChild(badge);
-
-    peersGridEl.appendChild(card);
+    const li = document.createElement("li");
+    li.textContent = p.nick + (p.self === p.id ? " (You)" : "");
+    peersListEl.appendChild(li);
 
     speakingState.set(p.id, {
-      cardEl: card,
+      li,
       analyser: null,
       source: null,
       self: p.self === p.id,
@@ -212,7 +187,7 @@ function updatePeers(peers) {
   // attach analyser for self
   const selfPeer = [...speakingState.values()].find((s) => s.self);
   if (selfPeer && localStream) {
-    attachSpeakingAnalyser(selfPeer, localStream, true);
+    attachSpeakingAnalyser(selfPeer, localStream);
   }
 }
 
@@ -223,14 +198,13 @@ function attachRemoteStream(stream) {
   audio.srcObject = stream;
   document.body.appendChild(audio);
 
-  // assume single remote peer for now
   const remotePeer = [...speakingState.values()].find((s) => !s.self);
   if (remotePeer) {
-    attachSpeakingAnalyser(remotePeer, stream, false);
+    attachSpeakingAnalyser(remotePeer, stream);
   }
 }
 
-function attachSpeakingAnalyser(peerState, stream, isSelf) {
+function attachSpeakingAnalyser(peerState, stream) {
   const ctx = new AudioContext();
   const source = ctx.createMediaStreamSource(stream);
   const analyser = ctx.createAnalyser();
@@ -247,13 +221,7 @@ function attachSpeakingAnalyser(peerState, stream, isSelf) {
     const avg = data.reduce((a, b) => a + b, 0) / data.length;
     const speaking = avg > 40; // tweak threshold
 
-    peerState.cardEl.classList.toggle("lp-peer-speaking", speaking);
-
-    if (isSelf) {
-      const level = Math.min(100, Math.max(0, (avg / 80) * 100));
-      selfMeterBarEl.style.width = `${level}%`;
-    }
-
+    peerState.li.classList.toggle("lp-peer-speaking", speaking);
     requestAnimationFrame(tick);
   }
 
@@ -273,7 +241,7 @@ function swapLocalStream(newStream) {
 
   const selfPeer = [...speakingState.values()].find((s) => s.self);
   if (selfPeer) {
-    attachSpeakingAnalyser(selfPeer, localStream, true);
+    attachSpeakingAnalyser(selfPeer, localStream);
   }
 }
 
@@ -288,9 +256,9 @@ function cleanupAndLeave() {
 }
 
 function log(text) {
+  if (!eventsEl) return;
   const line = document.createElement("div");
-  line.className = "lp-log-line";
   line.textContent = text;
-  logEl.appendChild(line);
-  logEl.scrollTop = logEl.scrollHeight;
+  eventsEl.appendChild(line);
+  eventsEl.scrollTop = eventsEl.scrollHeight;
 }
