@@ -1,31 +1,11 @@
-// app.js — lobby logic
+document.getElementById("join-form").addEventListener("submit", (e) => {
+  e.preventDefault();
 
-async function sha256(str) {
-  const data = new TextEncoder().encode(str);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(hash)]
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+  const room = document.getElementById("room-id").value.trim();
+  const nick = document.getElementById("nickname").value.trim();
 
-async function detectNetwork() {
-  const networkEl = document.getElementById("network");
-  const enterBtn = document.getElementById("enterBtn");
+  if (!room || !nick) return;
 
-  try {
-    const res = await fetch("https://api.ipify.org?format=json");
-    const ip = (await res.json()).ip;
-    const hash = await sha256(ip);
-
-    networkEl.innerHTML = `<span>${hash.slice(0, 12)}…</span>`;
-    enterBtn.disabled = false;
-    enterBtn.onclick = () => {
-      window.location.href = "talk.html?room=" + hash;
-    };
-  } catch (e) {
-    networkEl.innerHTML = `<span>Detection failed</span>`;
-    enterBtn.disabled = true;
-  }
-}
-
-detectNetwork();
+  const params = new URLSearchParams({ room, nick });
+  window.location.href = `talk.html?${params.toString()}`;
+});

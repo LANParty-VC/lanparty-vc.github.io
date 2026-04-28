@@ -2,57 +2,37 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>LANParty VC – Voice Room</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LANParty VC – Room</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="lp-body">
-  <div class="lp-shell">
-    <div class="lp-topbar">
-      <div class="lp-top-left">
-        <h1>LANParty VC</h1>
-        <p>Low‑friction voice for everyone on this network.</p>
+  <div class="lp-container">
+    <header class="lp-header">
+      <div>
+        <h1 class="lp-title" id="room-title">Room</h1>
+        <p class="lp-subtitle" id="user-label"></p>
       </div>
-      <div class="lp-top-right">
-        <div id="roomId" class="lp-room-pill">
-          Room: <span>…</span>
-        </div>
-        <div class="lp-status-pill">
-          <div id="statusDot" class="lp-status-dot"></div>
-          <span id="status">Idle</span>
-        </div>
-      </div>
-    </div>
+      <button id="leave-btn" class="lp-button lp-button-danger">Leave</button>
+    </header>
 
-    <div class="lp-main">
-      <div class="lp-panel">
-        <h2>Voice controls</h2>
-        <div class="lp-controls-row">
-          <button id="joinBtn" class="lp-btn lp-btn-primary">Join voice</button>
-          <button id="leaveBtn" class="lp-btn lp-btn-danger" disabled>Leave</button>
-          <button id="muteBtn" class="lp-btn lp-btn-secondary" disabled>Mute</button>
-          <button id="homeBtn" class="lp-btn lp-btn-secondary">Back to home</button>
-        </div>
-        <div class="lp-hint">
-          Use a second device or browser to join the same room and test audio.
-        </div>
-      </div>
+    <main class="lp-main">
+      <section class="lp-card">
+        <h2 class="lp-section-title">Participants</h2>
+        <ul id="peers-list" class="lp-list"></ul>
+      </section>
 
-      <div class="lp-panel">
-        <h2>Connected peers</h2>
-        <div id="peers" class="lp-peers-grid"></div>
-        <div class="lp-hint">
-          Peers appear here as they join. You’ll see yourself as <strong>You</strong>.
+      <section class="lp-card">
+        <h2 class="lp-section-title">Audio</h2>
+        <div class="lp-audio-controls">
+          <button id="mute-btn" class="lp-button lp-button-secondary">Mute</button>
+          <button id="device-btn" class="lp-button lp-button-secondary">Switch Mic</button>
         </div>
-      </div>
-    </div>
-
-    <div class="lp-footer">
-      <span>LANParty VC · WebRTC mesh · Cloudflare Worker signaling</span>
-      <span>v0.1 · local prototype</span>
-    </div>
+        <p id="status" class="lp-status">Connecting…</p>
+      </section>
+    </main>
   </div>
 
-  <script type="module" src="./talk.js"></script>
+  <script src="talk.js"></script>
 </body>
 </html>

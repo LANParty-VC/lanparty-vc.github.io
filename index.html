@@ -2,42 +2,31 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>LANParty VC – Lobby</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LANParty VC</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="lp-body">
-  <div class="lp-shell">
-    <div class="lp-header">
-      <div class="lp-title-block">
-        <h1>LANParty VC</h1>
-        <p>Discord‑style voice for everyone on your LAN.</p>
-      </div>
-      <div class="lp-badge">
-        <div class="lp-badge-dot"></div>
-        Edge‑powered signaling
-      </div>
-    </div>
+  <div class="lp-container">
+    <h1 class="lp-title">LANParty VC</h1>
+    <p class="lp-subtitle">Lightweight browser voice chat</p>
 
-    <div class="lp-card">
-      <div class="lp-row">
-        <div>
-          <div class="lp-label">Network fingerprint</div>
-          <div id="network" class="lp-network-pill">
-            <span>Detecting…</span>
-          </div>
-        </div>
-        <button id="enterBtn" class="lp-btn lp-btn-primary" disabled>
-          Enter voice room
-        </button>
-      </div>
-      <div class="lp-hint">
-        Your IP never leaves the browser — only a hash is used to group devices
-        into the same room.
-      </div>
-    </div>
+    <form id="join-form" class="lp-card">
+      <label class="lp-label">
+        Room ID
+        <input id="room-id" class="lp-input" placeholder="e.g. lobby" required />
+      </label>
+
+      <label class="lp-label">
+        Nickname
+        <input id="nickname" class="lp-input" placeholder="e.g. Austin" required />
+      </label>
+
+      <button class="lp-button" type="submit">Join Room</button>
+    </form>
   </div>
 
-  <script type="module" src="./app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
+s
