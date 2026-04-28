@@ -15,7 +15,7 @@ const muteBtn = document.getElementById("mute-btn");
 const deviceBtn = document.getElementById("device-btn");
 const leaveBtn = document.getElementById("leave-btn");
 
-const speakingState = new Map(); // peerId -> { li, analyser, source, self }
+const speakingState = new Map(); // peerId -> { cardEl, analyser, source, self }
 
 init();
 
@@ -148,11 +148,32 @@ function updatePeers(peers) {
 
   peers.forEach((p) => {
     const li = document.createElement("li");
-    li.textContent = p.nick + (p.self === p.id ? " (You)" : "");
+    li.className = "lp-peer-card";
+
+    const avatar = document.createElement("div");
+    avatar.className = "lp-peer-avatar";
+
+    const main = document.createElement("div");
+    main.className = "lp-peer-main";
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "lp-peer-name";
+    nameEl.textContent = p.nick;
+
+    const metaEl = document.createElement("div");
+    metaEl.className = "lp-peer-meta";
+    metaEl.textContent = p.self === p.id ? "You" : "Connected";
+
+    main.appendChild(nameEl);
+    main.appendChild(metaEl);
+
+    li.appendChild(avatar);
+    li.appendChild(main);
+
     peersListEl.appendChild(li);
 
     speakingState.set(p.id, {
-      li,
+      cardEl: li,
       analyser: null,
       source: null,
       self: p.self === p.id,
@@ -166,6 +187,7 @@ function updatePeers(peers) {
 function attachRemoteStream(stream) {
   const audio = document.createElement("audio");
   audio.autoplay = true;
+  audio.playsInline = true;
   audio.srcObject = stream;
   document.body.appendChild(audio);
 
@@ -188,10 +210,9 @@ function attachSpeakingAnalyser(peerState, stream, isSelf) {
   function tick() {
     analyser.getByteFrequencyData(data);
     const avg = data.reduce((a, b) => a + b, 0) / data.length;
-
     const speaking = avg > 40;
 
-    peerState.li.classList.toggle(
+    peerState.cardEl.classList.toggle(
       isSelf ? "lp-speaking-self" : "lp-speaking-other",
       speaking
     );
