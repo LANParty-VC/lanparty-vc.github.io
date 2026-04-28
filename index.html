@@ -7,26 +7,62 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="lp-body">
-  <div class="lp-container">
-    <h1 class="lp-title">LANParty VC</h1>
-    <p class="lp-subtitle">Lightweight browser voice chat</p>
+  <div class="lp-shell">
+    <header class="lp-topbar">
+      <div class="lp-logo">LANParty VC</div>
+      <div class="lp-topbar-right">
+        <span class="lp-pill">LAN‑only</span>
+        <span class="lp-pill lp-pill-soft">No accounts</span>
+      </div>
+    </header>
 
-    <form id="join-form" class="lp-card">
-      <label class="lp-label">
-        Room ID
-        <input id="room-id" class="lp-input" placeholder="e.g. lobby" required />
-      </label>
+    <main class="lp-main-layout">
+      <section class="lp-hero">
+        <h1 class="lp-hero-title">Drop‑in voice for your LAN.</h1>
+        <p class="lp-hero-subtitle">
+          Everyone on the same network automatically lands in the same room.
+          No codes, no servers, just a shared call.
+        </p>
 
-      <label class="lp-label">
-        Nickname
-        <input id="nickname" class="lp-input" placeholder="e.g. Austin" required />
-      </label>
+        <form id="join-form" class="lp-card lp-card-hero">
+          <label class="lp-label">
+            Nickname
+            <input
+              id="nickname"
+              class="lp-input"
+              placeholder="e.g. Austin"
+              autocomplete="off"
+              required
+            />
+          </label>
 
-      <button class="lp-button" type="submit">Join Room</button>
-    </form>
+          <div class="lp-row">
+            <button class="lp-button lp-button-primary" type="submit">
+              Join network call
+            </button>
+          </div>
+
+          <p class="lp-note">
+            Your mic stays on your device until you join. WebRTC is peer‑to‑peer.
+          </p>
+        </form>
+      </section>
+
+      <aside class="lp-sidecard lp-card">
+        <h2 class="lp-section-title">How it works</h2>
+        <ul class="lp-bullets">
+          <li><span>1.</span> We detect your public IP and assign a room code.</li>
+          <li><span>2.</span> Everyone on the same network shares that room.</li>
+          <li><span>3.</span> Cards light up when people speak.</li>
+        </ul>
+        <div class="lp-mini-footer">
+          <span class="lp-dot"></span>
+          <span>Best on desktop Chromium / Firefox.</span>
+        </div>
+      </aside>
+    </main>
   </div>
 
   <script src="app.js"></script>
 </body>
 </html>
-s

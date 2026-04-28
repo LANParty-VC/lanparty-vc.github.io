@@ -2,34 +2,58 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>LANParty VC – Room</title>
+  <title>LANParty VC – Call</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="lp-body">
-  <div class="lp-container">
-    <header class="lp-header">
-      <div>
-        <h1 class="lp-title" id="room-title">Room</h1>
-        <p class="lp-subtitle" id="user-label"></p>
+  <div class="lp-shell">
+    <header class="lp-topbar">
+      <div class="lp-logo">LANParty VC</div>
+      <div class="lp-topbar-right">
+        <span id="room-code-pill" class="lp-pill lp-pill-soft">Room: …</span>
+        <button id="leave-btn" class="lp-button lp-button-danger">Leave</button>
       </div>
-      <button id="leave-btn" class="lp-button lp-button-danger">Leave</button>
     </header>
 
-    <main class="lp-main">
-      <section class="lp-card">
-        <h2 class="lp-section-title">Participants</h2>
-        <ul id="peers-list" class="lp-list"></ul>
+    <main class="lp-main-layout lp-main-call">
+      <section class="lp-card lp-call-main">
+        <header class="lp-call-header">
+          <div>
+            <h1 class="lp-hero-title" id="room-title">Network room</h1>
+            <p class="lp-hero-subtitle" id="user-label"></p>
+          </div>
+          <div class="lp-call-status">
+            <span class="lp-status-dot" id="status-dot"></span>
+            <span id="status-text">Connecting…</span>
+          </div>
+        </header>
+
+        <section class="lp-participants">
+          <h2 class="lp-section-title">Participants</h2>
+          <div id="peers-grid" class="lp-peers-grid"></div>
+        </section>
       </section>
 
-      <section class="lp-card">
+      <aside class="lp-card lp-call-side">
         <h2 class="lp-section-title">Audio</h2>
         <div class="lp-audio-controls">
           <button id="mute-btn" class="lp-button lp-button-secondary">Mute</button>
-          <button id="device-btn" class="lp-button lp-button-secondary">Switch Mic</button>
+          <button id="device-btn" class="lp-button lp-button-secondary">Switch mic</button>
         </div>
-        <p id="status" class="lp-status">Connecting…</p>
-      </section>
+
+        <div class="lp-meter-wrap">
+          <span class="lp-meter-label">Your level</span>
+          <div class="lp-meter">
+            <div id="self-meter-bar" class="lp-meter-bar"></div>
+          </div>
+        </div>
+
+        <div class="lp-log">
+          <h3 class="lp-log-title">Events</h3>
+          <div id="log" class="lp-log-body"></div>
+        </div>
+      </aside>
     </main>
   </div>
 

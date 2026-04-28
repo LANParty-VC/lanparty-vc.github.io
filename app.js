@@ -1,11 +1,13 @@
-document.getElementById("join-form").addEventListener("submit", (e) => {
-  e.preventDefault();
+(() => {
+  const form = document.getElementById("join-form");
+  const nickInput = document.getElementById("nickname");
 
-  const room = document.getElementById("room-id").value.trim();
-  const nick = document.getElementById("nickname").value.trim();
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const nick = nickInput.value.trim();
+    if (!nick) return;
 
-  if (!room || !nick) return;
-
-  const params = new URLSearchParams({ room, nick });
-  window.location.href = `talk.html?${params.toString()}`;
-});
+    const params = new URLSearchParams({ nick });
+    window.location.href = `talk.html?${params.toString()}`;
+  });
+})();
