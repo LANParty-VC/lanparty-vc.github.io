@@ -21,15 +21,6 @@
   box-sizing: border-box;
 }
 
-body.lp-body {
-  margin: 0;
-  min-height: 100vh;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    "Segoe UI", sans-serif;
-  background: radial-gradient(circle at top, #020617 0, #000 60%);
-  color: var(--text);
-  overflow-x: hidden;
-}
 
 /* Starfield background */
 
@@ -135,13 +126,35 @@ body.lp-body {
   font-size: 0.95rem;
 }
 
+body.lp-body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", sans-serif;
+  background: transparent; /* IMPORTANT */
+  color: var(--text);
+  overflow-x: hidden;
+}
+
+.lp-shell,
+.lp-container {
+  background: rgba(0, 0, 0, 0.25); /* translucent */
+  backdrop-filter: blur(18px) brightness(0.8); /* glass effect */
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 20px;
+  position: relative;
+  z-index: 1;
+}
+
 .lp-card {
-  background: radial-gradient(circle at top left, #111827 0, #020617 55%);
-  border-radius: var(--radius-lg);
-  padding: 18px 18px 16px;
-  border: 1px solid rgba(31, 41, 55, 0.9);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px);
+  background: rgba(0, 0, 0, 0.35); /* translucent */
+  backdrop-filter: blur(14px) brightness(0.9);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 18px;
+  position: relative;
+  z-index: 1;
 }
 
 .lp-card-hero {
@@ -376,4 +389,23 @@ body.lp-body {
   .lp-main {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+.lp-peer-card {
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px) brightness(0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  transition: 150ms ease;
+}
+.lp-starfield {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: #020617;
+}
+.lp-starfield {
+  pointer-events: none; /* prevents blocking clicks */
 }

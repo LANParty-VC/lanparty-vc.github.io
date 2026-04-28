@@ -1,4 +1,4 @@
-// === STARFIELD ENGINE ===
+// === REAL 3D STARFIELD ENGINE ===
 (function createStarfield() {
   const canvas = document.createElement("canvas");
   canvas.className = "lp-starfield";
@@ -7,8 +7,9 @@
   const ctx = canvas.getContext("2d");
 
   let stars = [];
-  const STAR_COUNT = 350;
-  const SPEED = 0.05;
+  const STAR_COUNT = 1000;       // number of stars
+  const MAX_DEPTH = 1200;        // depth of field
+  const SPEED = 0.6;            // star movement speed
 
   function resize() {
     canvas.width = window.innerWidth;
@@ -19,9 +20,9 @@
     stars = [];
     for (let i = 0; i < STAR_COUNT; i++) {
       stars.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        z: Math.random() * canvas.width,
+        x: Math.random() * canvas.width - canvas.width / 2,
+        y: Math.random() * canvas.height - canvas.height / 2,
+        z: Math.random() * MAX_DEPTH,
       });
     }
   }
@@ -32,14 +33,18 @@
 
     for (let star of stars) {
       star.z -= SPEED;
-      if (star.z <= 0) star.z = canvas.width;
+      if (star.z <= 0) {
+        star.x = Math.random() * canvas.width - canvas.width / 2;
+        star.y = Math.random() * canvas.height - canvas.height / 2;
+        star.z = MAX_DEPTH;
+      }
 
-      const k = 128.0 / star.z;
+      const k = 128 / star.z;
       const px = star.x * k + canvas.width / 2;
       const py = star.y * k + canvas.height / 2;
 
       if (px >= 0 && px <= canvas.width && py >= 0 && py <= canvas.height) {
-        const size = (1 - star.z / canvas.width) * 2;
+        const size = (1 - star.z / MAX_DEPTH) * 2.2;
         ctx.fillStyle = "white";
         ctx.fillRect(px, py, size, size);
       }
