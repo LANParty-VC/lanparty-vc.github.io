@@ -9,22 +9,22 @@ async function sha256(str) {
 }
 
 async function detectNetwork() {
+  const networkEl = document.getElementById("network");
+  const enterBtn = document.getElementById("enterBtn");
+
   try {
     const res = await fetch("https://api.ipify.org?format=json");
     const ip = (await res.json()).ip;
     const hash = await sha256(ip);
 
-    document.getElementById("network").textContent =
-      "Network fingerprint: " + hash.slice(0, 12) + "…";
-
-    const btn = document.getElementById("enterBtn");
-    btn.disabled = false;
-    btn.onclick = () => {
+    networkEl.innerHTML = `<span>${hash.slice(0, 12)}…</span>`;
+    enterBtn.disabled = false;
+    enterBtn.onclick = () => {
       window.location.href = "talk.html?room=" + hash;
     };
   } catch (e) {
-    document.getElementById("network").textContent =
-      "Network detection failed";
+    networkEl.innerHTML = `<span>Detection failed</span>`;
+    enterBtn.disabled = true;
   }
 }
 
