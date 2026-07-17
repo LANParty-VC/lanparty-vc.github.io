@@ -53,7 +53,7 @@ function setupUI() {
   };
 
   leaveBtn.onclick = () => cleanupAndLeave();
-}}
+}
 
 function getLocalNetworkId() {
   return new Promise((resolve) => {
