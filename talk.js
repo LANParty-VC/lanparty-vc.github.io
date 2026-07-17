@@ -225,56 +225,21 @@ function send(obj) {
 }
 
 async function updatePeers(peers) {
+  peersListEl.innerHTML = "";
   const newPeerIds = new Set(peers.map((p) => p.id));
   const oldPeerIds = new Set(speakingState.keys());
 
-  let peersChanged = newPeerIds.size !== oldPeerIds.size;
-  if (!peersChanged) {
-    for (const id of newPeerIds) {
-      if (!oldPeerIds.has(id)) {
-        peersChanged = true;
-        break;
-      }
-    }
-  }
-
-  if (!peersChanged) return; // Don't update if peers haven't changed
-
-  const oldPeerConnections = new Map(peerConnections);
-
-  // Create connections for new peers
+  // Create peer connections for new remote peers
   for (const p of peers) {
     if (!p.self && !peerConnections.has(p.id)) {
       await makeOfferTo(p.id);
     }
   }
 
-  // Only rebuild UI, don't clear analysers
-  peersListEl.innerHTML = "";
-
+  // Display all peers
   for (const p of peers) {
-    let peerState = speakingState.get(p.id);
-    if (!peerState) {
-      peerState = {
-        cardEl: null,
-        analyser: null,
-        source: null,
-        animId: null,
-        self: p.self === p.id,
-      };
-      speakingState.set(p.id, peerState);
-    }
-
     const li = document.createElement("li");
     li.className = "lp-peer-card";
-    if (peerState.cardEl && peerState.cardEl.classList.contains("lp-speaking-self")) {
-      li.classList.add("lp-speaking-self");
-    } else if (
-      peerState.cardEl &&
-      peerState.cardEl.classList.contains("lp-speaking-other")
-    ) {
-      li.classList.add("lp-speaking-other");
-    }
 
     const avatar = document.createElement("div");
     avatar.className = "lp-peer-avatar";
@@ -288,15 +253,28 @@ async function updatePeers(peers) {
 
     const metaEl = document.createElement("div");
     metaEl.className = "lp-peer-meta";
-    metaEl.textContent = peerState.self ? "You" : "Connected";
+    const isSelf = p.self === p.id;
+    metaEl.textContent = isSelf ? "You" : "Connected";
 
     main.appendChild(nameEl);
     main.appendChild(metaEl);
     li.appendChild(avatar);
     li.appendChild(main);
-
     peersListEl.appendChild(li);
-    peerState.cardEl = li;
+
+    // Create or update speaking state
+    if (!speakingState.has(p.id)) {
+      speakingState.set(p.id, {
+        cardEl: li,
+        analyser: null,
+        source: null,
+        animId: null,
+        self: isSelf,
+      });
+    } else {
+      const state = speakingState.get(p.id);
+      state.cardEl = li;
+    }
   }
 
   // Clean up removed peers
@@ -312,20 +290,16 @@ async function updatePeers(peers) {
     }
   }
 
-  // Ensure self analyser is running
-  const selfPeer = [...speakingState.values()].find((s) => s.self);
-  if (selfPeer && !selfPeer.analyser) {
-    attachSpeakingAnalyser(selfPeer, localStream, true);
-  }
-
-  // Ensure remote analysers are running
-  for (const [peerId, stream] of remoteStreams.entries()) {
-    const peerState = speakingState.get(peerId);
-    if (peerState && !peerState.analyser) {
-      attachSpeakingAnalyser(peerState, stream, false);
+  // Start analysers
+  for (const [peerId, peerState] of speakingState.entries()) {
+    if (peerState.self && !peerState.analyser && localStream) {
+      attachSpeakingAnalyser(peerState, localStream, true);
+    }
+    if (!peerState.self && !peerState.analyser && remoteStreams.has(peerId)) {
+      attachSpeakingAnalyser(peerState, remoteStreams.get(peerId), false);
     }
   }
-}}
+}
 
 function attachRemoteStream(peerId, stream) {
   const audio = document.createElement("audio");
@@ -399,6 +373,10 @@ function cleanupAndLeave() {
     pc.close();
   }
   peerConnections.clear();
+  for (const state of speakingState.values()) {
+    if (state.animId) cancelAnimationFrame(state.animId);
+  }
+  speakingState.clear();
   localStream?.getTracks().forEach((t) => t.stop());
   window.location.href = "index.html";
 }
