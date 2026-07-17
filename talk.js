@@ -7,6 +7,7 @@ let localStream;
 let nickname;
 let myId;
 let isMuted = false;
+let audioContext; // Shared audio context for analysis
 
 const roomTitleEl = document.getElementById("room-title");
 const userLabelEl = document.getElementById("user-label");
@@ -47,9 +48,19 @@ function setupUI() {
 
   deviceBtn.onclick = async () => {
     try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioDevices = devices.filter((d) => d.kind === "audioinput");
+      if (audioDevices.length <= 1) {
+        statusEl.textContent = "Only one mic available";
+        return;
+      }
       const newStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       swapLocalStream(newStream);
-    } catch {}
+      statusEl.textContent = "Mic switched";
+    } catch (err) {
+      statusEl.textContent = "Mic switch failed";
+      console.error("Device switch error:", err);
+    }
   };
 
   leaveBtn.onclick = () => cleanupAndLeave();
@@ -235,6 +246,8 @@ async function updatePeers(peers) {
     if (!newPeerIds.has(peerId)) {
       const pc = peerConnections.get(peerId);
       if (pc) pc.close();
+      const peerState = speakingState.get(peerId);
+      if (peerState && peerState.animId) cancelAnimationFrame(peerState.animId);
       peerConnections.delete(peerId);
       remoteStreams.delete(peerId);
       speakingState.delete(peerId);
@@ -268,9 +281,17 @@ function attachRemoteStream(peerId, stream) {
 }
 
 function attachSpeakingAnalyser(peerState, stream, isSelf) {
-  const ctx = new AudioContext();
-  const source = ctx.createMediaStreamSource(stream);
-  const analyser = ctx.createAnalyser();
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  // Resume audio context on first interaction
+  if (audioContext.state === "suspended") {
+    audioContext.resume();
+  }
+
+  const source = audioContext.createMediaStreamSource(stream);
+  const analyser = audioContext.createAnalyser();
   analyser.fftSize = 512;
   source.connect(analyser);
 
@@ -278,21 +299,23 @@ function attachSpeakingAnalyser(peerState, stream, isSelf) {
   peerState.source = source;
 
   const data = new Uint8Array(analyser.frequencyBinCount);
+  let animId;
 
   function tick() {
     analyser.getByteFrequencyData(data);
     const avg = data.reduce((a, b) => a + b, 0) / data.length;
-    const speaking = avg > 40;
+    const speaking = avg > 30;
 
     peerState.cardEl.classList.toggle(
       isSelf ? "lp-speaking-self" : "lp-speaking-other",
       speaking
     );
 
-    requestAnimationFrame(tick);
+    animId = requestAnimationFrame(tick);
   }
 
-  requestAnimationFrame(tick);
+  tick();
+  peerState.animId = animId;
 }
 
 function swapLocalStream(newStream) {
