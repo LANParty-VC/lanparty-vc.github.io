@@ -10,6 +10,8 @@ let isMuted = false;
 let audioContext; // Shared audio context for analysis
 let availableAudioDevices = [];
 let currentDeviceIndex = 0;
+let cachedNetworkId = null;
+let broadcastChannel = null;
 
 const roomTitleEl = document.getElementById("room-title");
 const userLabelEl = document.getElementById("user-label");
@@ -84,36 +86,59 @@ function setupUI() {
 
 function getLocalNetworkId() {
   return new Promise((resolve) => {
-    // Try sessionStorage first for consistency across tabs
-    const stored = sessionStorage.getItem("lanpartyNetId");
-    if (stored) {
-      resolve(stored);
+    // Check if we already have a cached network ID
+    if (cachedNetworkId) {
+      console.log("Using cached network ID:", cachedNetworkId);
+      resolve(cachedNetworkId);
       return;
     }
 
+    // Try BroadcastChannel to sync across tabs
+    if (typeof BroadcastChannel !== "undefined") {
+      try {
+        broadcastChannel = new BroadcastChannel("lanpartyNetId");
+        broadcastChannel.onmessage = (event) => {
+          if (event.data.netId && !cachedNetworkId) {
+            cachedNetworkId = event.data.netId;
+            console.log("Received network ID from broadcast:", cachedNetworkId);
+            resolve(cachedNetworkId);
+          }
+        };
+      } catch (e) {
+        console.log("BroadcastChannel not available");
+      }
+    }
+
+    // Detect local IP via WebRTC
     const pc = new RTCPeerConnection({ iceServers: [] });
     pc.createDataChannel("");
     pc.createOffer()
       .then((offer) => pc.setLocalDescription(offer))
       .catch(() => {
         const fallback = "local-" + Math.random().toString(36).substr(2, 9);
-        sessionStorage.setItem("lanpartyNetId", fallback);
+        cachedNetworkId = fallback;
+        if (broadcastChannel) broadcastChannel.postMessage({ netId: fallback });
         resolve(fallback);
       });
 
     pc.onicecandidate = (ice) => {
-      if (!ice || !ice.candidate) return;
+      if (!ice || !ice.candidate || cachedNetworkId) return;
       const match = ice.candidate.candidate.match(/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
       if (match) {
-        sessionStorage.setItem("lanpartyNetId", match[1]);
-        resolve(match[1]);
+        cachedNetworkId = match[1];
+        console.log("Detected network ID:", cachedNetworkId);
+        if (broadcastChannel) broadcastChannel.postMessage({ netId: cachedNetworkId });
+        resolve(cachedNetworkId);
         pc.close();
       }
     };
 
     setTimeout(() => {
+      if (cachedNetworkId) return;
       const fallback = "local-" + Math.random().toString(36).substr(2, 9);
-      sessionStorage.setItem("lanpartyNetId", fallback);
+      cachedNetworkId = fallback;
+      console.log("Network ID timeout, using fallback:", fallback);
+      if (broadcastChannel) broadcastChannel.postMessage({ netId: fallback });
       resolve(fallback);
       try {
         pc.close();
@@ -124,14 +149,17 @@ function getLocalNetworkId() {
 
 async function setupWebSocket() {
   const networkId = await getLocalNetworkId();
+  console.log("Network ID:", networkId);
   ws = new WebSocket(`${SIGNAL_URL}/?nick=${encodeURIComponent(nickname)}&net=${encodeURIComponent(networkId)}`);
 
   ws.onopen = () => {
     statusEl.textContent = "Connected";
+    console.log("WebSocket connected");
   };
 
   ws.onmessage = async (event) => {
     const msg = JSON.parse(event.data);
+    console.log("Message received:", msg.type, msg);
 
     switch (msg.type) {
       case "room-info":
@@ -225,6 +253,7 @@ function send(obj) {
 }
 
 async function updatePeers(peers) {
+  console.log("updatePeers called with:", peers);
   peersListEl.innerHTML = "";
   const newPeerIds = new Set(peers.map((p) => p.id));
   const oldPeerIds = new Set(speakingState.keys());
