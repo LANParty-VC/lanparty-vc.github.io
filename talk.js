@@ -84,23 +84,37 @@ function setupUI() {
 
 function getLocalNetworkId() {
   return new Promise((resolve) => {
+    // Try sessionStorage first for consistency across tabs
+    const stored = sessionStorage.getItem("lanpartyNetId");
+    if (stored) {
+      resolve(stored);
+      return;
+    }
+
     const pc = new RTCPeerConnection({ iceServers: [] });
     pc.createDataChannel("");
     pc.createOffer()
       .then((offer) => pc.setLocalDescription(offer))
-      .catch(() => resolve("unknown"));
+      .catch(() => {
+        const fallback = "local-" + Math.random().toString(36).substr(2, 9);
+        sessionStorage.setItem("lanpartyNetId", fallback);
+        resolve(fallback);
+      });
 
     pc.onicecandidate = (ice) => {
       if (!ice || !ice.candidate) return;
       const match = ice.candidate.candidate.match(/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
       if (match) {
+        sessionStorage.setItem("lanpartyNetId", match[1]);
         resolve(match[1]);
         pc.close();
       }
     };
 
     setTimeout(() => {
-      resolve("unknown");
+      const fallback = "local-" + Math.random().toString(36).substr(2, 9);
+      sessionStorage.setItem("lanpartyNetId", fallback);
+      resolve(fallback);
       try {
         pc.close();
       } catch {}
@@ -114,6 +128,13 @@ async function setupWebSocket() {
 
   ws.onopen = () => {
     statusEl.textContent = "Connected";
+    // Request initial peer list and then poll periodically
+    send({ type: "get-peers" });
+    setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        send({ type: "get-peers" });
+      }
+    }, 2000);
   };
 
   ws.onmessage = async (event) => {
@@ -146,6 +167,8 @@ async function setupWebSocket() {
     statusEl.textContent = "Disconnected.";
   };
 }
+
+let lastKnownPeerCount = 0;
 
 function createPeerConnectionTo(peerId) {
   const pc = new RTCPeerConnection({
@@ -217,7 +240,7 @@ async function updatePeers(peers) {
   const newPeerIds = new Set(peers.map((p) => p.id));
   const oldPeerIds = new Set(peerConnections.keys());
 
-  // Create connections for new peers
+  // Create connections for new peers and display all peers
   for (const p of peers) {
     if (!p.self && !peerConnections.has(p.id)) {
       // We're connecting to this peer for the first time
@@ -239,7 +262,8 @@ async function updatePeers(peers) {
 
     const metaEl = document.createElement("div");
     metaEl.className = "lp-peer-meta";
-    metaEl.textContent = p.self === p.id ? "You" : "Connected";
+    const isSelf = p.self === p.id;
+    metaEl.textContent = isSelf ? "You" : "Connected";
 
     main.appendChild(nameEl);
     main.appendChild(metaEl);
@@ -253,9 +277,9 @@ async function updatePeers(peers) {
       cardEl: li,
       analyser: null,
       source: null,
-      self: p.self === p.id,
+      self: isSelf,
     });
-  };
+  }
 
   // Clean up removed peers
   for (const peerId of oldPeerIds) {
