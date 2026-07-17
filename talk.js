@@ -200,6 +200,10 @@ async function setupWebSocket() {
       case "ice":
         await handleIce(msg);
         break;
+
+      case "speaking":
+        handleSpeakingState(msg.from, msg.speaking);
+        break;
     }
   };
 
@@ -218,9 +222,19 @@ function createPeerConnectionTo(peerId) {
   console.log(`[PEER] Adding local audio tracks to ${peerId}...`);
   const trackCount = localStream.getTracks().length;
   console.log(`[PEER] Local stream has ${trackCount} tracks`);
+  if (trackCount === 0) {
+    console.error(`[PEER] ERROR: No audio tracks in local stream!`);
+  }
   localStream.getTracks().forEach((t, i) => {
     console.log(`[PEER]   Track ${i}: kind=${t.kind}, enabled=${t.enabled}`);
     pc.addTrack(t, localStream);
+  });
+  
+  // Verify tracks were added
+  const senders = pc.getSenders();
+  console.log(`[PEER] After addTrack, peer connection has ${senders.length} senders`);
+  senders.forEach((s, i) => {
+    console.log(`[PEER]   Sender ${i}: kind=${s.track?.kind}, enabled=${s.track?.enabled}`);
   });
 
   pc.ontrack = (event) => {
@@ -441,6 +455,7 @@ function attachSpeakingAnalyser(peerState, stream, isSelf) {
 
   const data = new Uint8Array(analyser.frequencyBinCount);
   let animId;
+  let lastSpeakingState = false;
 
   function tick() {
     analyser.getByteFrequencyData(data);
@@ -451,6 +466,13 @@ function attachSpeakingAnalyser(peerState, stream, isSelf) {
       isSelf ? "lp-speaking-self" : "lp-speaking-other",
       speaking
     );
+
+    // Broadcast speaking state when it changes (only for self)
+    if (isSelf && speaking !== lastSpeakingState) {
+      lastSpeakingState = speaking;
+      console.log(`[BROADCAST] You are now ${speaking ? "speaking" : "quiet"}`);
+      send({ type: "speaking", speaking: speaking, from: myId });
+    }
 
     animId = requestAnimationFrame(tick);
   }
@@ -475,16 +497,4 @@ function swapLocalStream(newStream) {
   if (selfPeer) attachSpeakingAnalyser(selfPeer, localStream, true);
 }
 
-function cleanupAndLeave() {
-  ws?.close();
-  for (const pc of peerConnections.values()) {
-    pc.close();
-  }
-  peerConnections.clear();
-  for (const state of speakingState.values()) {
-    if (state.animId) cancelAnimationFrame(state.animId);
-  }
-  speakingState.clear();
-  localStream?.getTracks().forEach((t) => t.stop());
-  window.location.href = "index.html";
-}
+function handleSpeakingState(peerId, speaking) {\n  console.log(`[SPEAK] Peer ${peerId} is ${speaking ? \"speaking\" : \"quiet\"}`);\n  const peerState = speakingState.get(peerId);\n  if (peerState) {\n    peerState.cardEl.classList.toggle(\"lp-speaking-other\", speaking);\n  }\n}\n\nfunction cleanupAndLeave() {\n  ws?.close();\n  for (const pc of peerConnections.values()) {\n    pc.close();\n  }\n  peerConnections.clear();\n  for (const state of speakingState.values()) {\n    if (state.animId) cancelAnimationFrame(state.animId);\n  }\n  speakingState.clear();\n  localStream?.getTracks().forEach((t) => t.stop());\n  window.location.href = \"index.html\";\n}
