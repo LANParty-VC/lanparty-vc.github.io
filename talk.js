@@ -1,9 +1,11 @@
 const SIGNAL_URL = "wss://lanpartyvc-signal.arahomeschool23.workers.dev";
 
 let ws;
-let pc;
+let peerConnections = new Map(); // peerId -> RTCPeerConnection
+let remoteStreams = new Map(); // peerId -> MediaStream
 let localStream;
 let nickname;
+let myId;
 let isMuted = false;
 
 const roomTitleEl = document.getElementById("room-title");
@@ -58,7 +60,6 @@ function setupWebSocket() {
 
   ws.onopen = () => {
     statusEl.textContent = "Connected to signaling";
-    createPeerConnection();
   };
 
   ws.onmessage = async (event) => {
@@ -66,11 +67,12 @@ function setupWebSocket() {
 
     switch (msg.type) {
       case "room-info":
+        myId = msg.myId;
         roomTitleEl.textContent = `Room: ${msg.code}`;
         break;
 
       case "peers":
-        updatePeers(msg.peers);
+        await updatePeers(msg.peers);
         break;
 
       case "offer":
@@ -92,8 +94,8 @@ function setupWebSocket() {
   };
 }
 
-function createPeerConnection() {
-  pc = new RTCPeerConnection({
+function createPeerConnectionTo(peerId) {
+  const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
 
@@ -101,35 +103,48 @@ function createPeerConnection() {
 
   pc.ontrack = (event) => {
     const stream = event.streams[0];
-    attachRemoteStream(stream);
+    remoteStreams.set(peerId, stream);
+    attachRemoteStream(peerId, stream);
   };
 
   pc.onicecandidate = (event) => {
-    if (event.candidate) send({ type: "ice", candidate: event.candidate });
+    if (event.candidate) send({ type: "ice", candidate: event.candidate, to: peerId });
   };
 
-  makeOffer();
+  peerConnections.set(peerId, pc);
+  return pc;
 }
 
-async function makeOffer() {
+async function makeOfferTo(peerId) {
+  let pc = peerConnections.get(peerId);
+  if (!pc) pc = createPeerConnectionTo(peerId);
+
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  send({ type: "offer", sdp: offer });
+  send({ type: "offer", sdp: offer, to: peerId });
 }
 
 async function handleOffer(msg) {
+  const peerId = msg.from;
+  let pc = peerConnections.get(peerId);
+  if (!pc) pc = createPeerConnectionTo(peerId);
+
   await pc.setRemoteDescription(msg.sdp);
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
-  send({ type: "answer", sdp: answer });
+  send({ type: "answer", sdp: answer, to: peerId });
 }
 
 async function handleAnswer(msg) {
-  await pc.setRemoteDescription(msg.sdp);
+  const peerId = msg.from;
+  const pc = peerConnections.get(peerId);
+  if (pc) await pc.setRemoteDescription(msg.sdp);
 }
 
 async function handleIce(msg) {
-  if (msg.candidate) {
+  const peerId = msg.from;
+  const pc = peerConnections.get(peerId);
+  if (pc && msg.candidate) {
     try {
       await pc.addIceCandidate(msg.candidate);
     } catch {}
@@ -142,11 +157,20 @@ function send(obj) {
   }
 }
 
-function updatePeers(peers) {
+async function updatePeers(peers) {
   peersListEl.innerHTML = "";
   speakingState.clear();
 
-  peers.forEach((p) => {
+  const newPeerIds = new Set(peers.map((p) => p.id));
+  const oldPeerIds = new Set(peerConnections.keys());
+
+  // Create connections for new peers
+  for (const p of peers) {
+    if (!p.self && !peerConnections.has(p.id)) {
+      // We're connecting to this peer for the first time
+      await makeOfferTo(p.id);
+    }
+
     const li = document.createElement("li");
     li.className = "lp-peer-card";
 
@@ -178,21 +202,43 @@ function updatePeers(peers) {
       source: null,
       self: p.self === p.id,
     });
-  });
+  };
 
+  // Clean up removed peers
+  for (const peerId of oldPeerIds) {
+    if (!newPeerIds.has(peerId)) {
+      const pc = peerConnections.get(peerId);
+      if (pc) pc.close();
+      peerConnections.delete(peerId);
+      remoteStreams.delete(peerId);
+      speakingState.delete(peerId);
+    }
+  }
+
+  // Attach analyser for self
   const selfPeer = [...speakingState.values()].find((s) => s.self);
   if (selfPeer) attachSpeakingAnalyser(selfPeer, localStream, true);
+
+  // Attach analysers for remote streams already received
+  for (const [peerId, stream] of remoteStreams.entries()) {
+    const peerState = speakingState.get(peerId);
+    if (peerState && !peerState.analyser) {
+      attachSpeakingAnalyser(peerState, stream, false);
+    }
+  }
 }
 
-function attachRemoteStream(stream) {
+function attachRemoteStream(peerId, stream) {
   const audio = document.createElement("audio");
   audio.autoplay = true;
   audio.playsInline = true;
   audio.srcObject = stream;
   document.body.appendChild(audio);
 
-  const remotePeer = [...speakingState.values()].find((s) => !s.self);
-  if (remotePeer) attachSpeakingAnalyser(remotePeer, stream, false);
+  const peerState = speakingState.get(peerId);
+  if (peerState && !peerState.analyser) {
+    attachSpeakingAnalyser(peerState, stream, false);
+  }
 }
 
 function attachSpeakingAnalyser(peerState, stream, isSelf) {
@@ -227,10 +273,12 @@ function swapLocalStream(newStream) {
   localStream.getTracks().forEach((t) => t.stop());
   localStream = newStream;
 
-  localStream.getTracks().forEach((track) => {
-    const sender = pc.getSenders().find((s) => s.track && s.track.kind === track.kind);
-    if (sender) sender.replaceTrack(track);
-  });
+  for (const pc of peerConnections.values()) {
+    localStream.getTracks().forEach((track) => {
+      const sender = pc.getSenders().find((s) => s.track && s.track.kind === track.kind);
+      if (sender) sender.replaceTrack(track);
+    });
+  }
 
   const selfPeer = [...speakingState.values()].find((s) => s.self);
   if (selfPeer) attachSpeakingAnalyser(selfPeer, localStream, true);
@@ -238,7 +286,10 @@ function swapLocalStream(newStream) {
 
 function cleanupAndLeave() {
   ws?.close();
-  pc?.close();
+  for (const pc of peerConnections.values()) {
+    pc.close();
+  }
+  peerConnections.clear();
   localStream?.getTracks().forEach((t) => t.stop());
   window.location.href = "index.html";
 }
