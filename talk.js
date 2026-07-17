@@ -35,7 +35,7 @@ async function init() {
   }
 
   setupUI();
-  setupWebSocket();
+  await setupWebSocket();
 }
 
 function setupUI() {
@@ -53,13 +53,40 @@ function setupUI() {
   };
 
   leaveBtn.onclick = () => cleanupAndLeave();
+}}
+
+function getLocalNetworkId() {
+  return new Promise((resolve) => {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    pc.createDataChannel("");
+    pc.createOffer()
+      .then((offer) => pc.setLocalDescription(offer))
+      .catch(() => resolve("unknown"));
+
+    pc.onicecandidate = (ice) => {
+      if (!ice || !ice.candidate) return;
+      const match = ice.candidate.candidate.match(/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
+      if (match) {
+        resolve(match[1]);
+        pc.close();
+      }
+    };
+
+    setTimeout(() => {
+      resolve("unknown");
+      try {
+        pc.close();
+      } catch {}
+    }, 2000);
+  });
 }
 
-function setupWebSocket() {
-  ws = new WebSocket(`${SIGNAL_URL}/?nick=${encodeURIComponent(nickname)}`);
+async function setupWebSocket() {
+  const networkId = await getLocalNetworkId();
+  ws = new WebSocket(`${SIGNAL_URL}/?nick=${encodeURIComponent(nickname)}&net=${encodeURIComponent(networkId)}`);
 
   ws.onopen = () => {
-    statusEl.textContent = "Connected to signaling";
+    statusEl.textContent = "Connected";
   };
 
   ws.onmessage = async (event) => {
@@ -68,7 +95,6 @@ function setupWebSocket() {
     switch (msg.type) {
       case "room-info":
         myId = msg.myId;
-        roomTitleEl.textContent = `Room: ${msg.code}`;
         break;
 
       case "peers":
