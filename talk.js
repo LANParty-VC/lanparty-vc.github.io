@@ -128,13 +128,6 @@ async function setupWebSocket() {
 
   ws.onopen = () => {
     statusEl.textContent = "Connected";
-    // Request initial peer list and then poll periodically
-    send({ type: "get-peers" });
-    setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        send({ type: "get-peers" });
-      }
-    }, 2000);
   };
 
   ws.onmessage = async (event) => {
@@ -167,8 +160,6 @@ async function setupWebSocket() {
     statusEl.textContent = "Disconnected.";
   };
 }
-
-let lastKnownPeerCount = 0;
 
 function createPeerConnectionTo(peerId) {
   const pc = new RTCPeerConnection({
@@ -234,21 +225,56 @@ function send(obj) {
 }
 
 async function updatePeers(peers) {
-  peersListEl.innerHTML = "";
-  speakingState.clear();
-
   const newPeerIds = new Set(peers.map((p) => p.id));
-  const oldPeerIds = new Set(peerConnections.keys());
+  const oldPeerIds = new Set(speakingState.keys());
 
-  // Create connections for new peers and display all peers
+  let peersChanged = newPeerIds.size !== oldPeerIds.size;
+  if (!peersChanged) {
+    for (const id of newPeerIds) {
+      if (!oldPeerIds.has(id)) {
+        peersChanged = true;
+        break;
+      }
+    }
+  }
+
+  if (!peersChanged) return; // Don't update if peers haven't changed
+
+  const oldPeerConnections = new Map(peerConnections);
+
+  // Create connections for new peers
   for (const p of peers) {
     if (!p.self && !peerConnections.has(p.id)) {
-      // We're connecting to this peer for the first time
       await makeOfferTo(p.id);
+    }
+  }
+
+  // Only rebuild UI, don't clear analysers
+  peersListEl.innerHTML = "";
+
+  for (const p of peers) {
+    let peerState = speakingState.get(p.id);
+    if (!peerState) {
+      peerState = {
+        cardEl: null,
+        analyser: null,
+        source: null,
+        animId: null,
+        self: p.self === p.id,
+      };
+      speakingState.set(p.id, peerState);
     }
 
     const li = document.createElement("li");
     li.className = "lp-peer-card";
+    if (peerState.cardEl && peerState.cardEl.classList.contains("lp-speaking-self")) {
+      li.classList.add("lp-speaking-self");
+    } else if (
+      peerState.cardEl &&
+      peerState.cardEl.classList.contains("lp-speaking-other")
+    ) {
+      li.classList.add("lp-speaking-other");
+    }
 
     const avatar = document.createElement("div");
     avatar.className = "lp-peer-avatar";
@@ -262,23 +288,15 @@ async function updatePeers(peers) {
 
     const metaEl = document.createElement("div");
     metaEl.className = "lp-peer-meta";
-    const isSelf = p.self === p.id;
-    metaEl.textContent = isSelf ? "You" : "Connected";
+    metaEl.textContent = peerState.self ? "You" : "Connected";
 
     main.appendChild(nameEl);
     main.appendChild(metaEl);
-
     li.appendChild(avatar);
     li.appendChild(main);
 
     peersListEl.appendChild(li);
-
-    speakingState.set(p.id, {
-      cardEl: li,
-      analyser: null,
-      source: null,
-      self: isSelf,
-    });
+    peerState.cardEl = li;
   }
 
   // Clean up removed peers
@@ -294,18 +312,20 @@ async function updatePeers(peers) {
     }
   }
 
-  // Attach analyser for self
+  // Ensure self analyser is running
   const selfPeer = [...speakingState.values()].find((s) => s.self);
-  if (selfPeer) attachSpeakingAnalyser(selfPeer, localStream, true);
+  if (selfPeer && !selfPeer.analyser) {
+    attachSpeakingAnalyser(selfPeer, localStream, true);
+  }
 
-  // Attach analysers for remote streams already received
+  // Ensure remote analysers are running
   for (const [peerId, stream] of remoteStreams.entries()) {
     const peerState = speakingState.get(peerId);
     if (peerState && !peerState.analyser) {
       attachSpeakingAnalyser(peerState, stream, false);
     }
   }
-}
+}}
 
 function attachRemoteStream(peerId, stream) {
   const audio = document.createElement("audio");
