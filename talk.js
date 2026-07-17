@@ -190,6 +190,7 @@ async function setupWebSocket() {
 }
 
 function createPeerConnectionTo(peerId) {
+  console.log(`createPeerConnectionTo: ${peerId}`);
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
@@ -197,41 +198,52 @@ function createPeerConnectionTo(peerId) {
   localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
   pc.ontrack = (event) => {
+    console.log(`ontrack event from ${peerId}:`, event);
     const stream = event.streams[0];
     remoteStreams.set(peerId, stream);
+    console.log(`Stored remote stream for ${peerId}`);
     attachRemoteStream(peerId, stream);
   };
 
   pc.onicecandidate = (event) => {
-    if (event.candidate) send({ type: "ice", candidate: event.candidate, to: peerId });
+    if (event.candidate) {
+      console.log(`Sending ICE candidate to ${peerId}`);
+      send({ type: "ice", candidate: event.candidate, to: peerId });
+    }
   };
 
   peerConnections.set(peerId, pc);
+  console.log(`Peer connection created for ${peerId}`);
   return pc;
 }
 
 async function makeOfferTo(peerId) {
+  console.log(`makeOfferTo: ${peerId}`);
   let pc = peerConnections.get(peerId);
   if (!pc) pc = createPeerConnectionTo(peerId);
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
+  console.log(`Sending offer to ${peerId}`);
   send({ type: "offer", sdp: offer, to: peerId });
 }
 
 async function handleOffer(msg) {
   const peerId = msg.from;
+  console.log(`handleOffer from ${peerId}`);
   let pc = peerConnections.get(peerId);
   if (!pc) pc = createPeerConnectionTo(peerId);
 
   await pc.setRemoteDescription(msg.sdp);
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
+  console.log(`Sending answer to ${peerId}`);
   send({ type: "answer", sdp: answer, to: peerId });
 }
 
 async function handleAnswer(msg) {
   const peerId = msg.from;
+  console.log(`handleAnswer from ${peerId}`);
   const pc = peerConnections.get(peerId);
   if (pc) await pc.setRemoteDescription(msg.sdp);
 }
@@ -240,9 +252,12 @@ async function handleIce(msg) {
   const peerId = msg.from;
   const pc = peerConnections.get(peerId);
   if (pc && msg.candidate) {
+    console.log(`Adding ICE candidate from ${peerId}`);
     try {
       await pc.addIceCandidate(msg.candidate);
-    } catch {}
+    } catch (e) {
+      console.error(`Error adding ICE candidate from ${peerId}:`, e);
+    }
   }
 }
 
@@ -253,7 +268,10 @@ function send(obj) {
 }
 
 async function updatePeers(peers) {
-  console.log("updatePeers called with:", peers);
+  console.log("updatePeers called with:", peers.length, "peers");
+  peers.forEach((p) => {
+    console.log(`  - Peer: ${p.nick} (ID: ${p.id}, self: ${p.self === p.id})`);
+  });
   peersListEl.innerHTML = "";
   const newPeerIds = new Set(peers.map((p) => p.id));
   const oldPeerIds = new Set(speakingState.keys());
@@ -261,12 +279,14 @@ async function updatePeers(peers) {
   // Create peer connections for new remote peers
   for (const p of peers) {
     if (!p.self && !peerConnections.has(p.id)) {
+      console.log(`Creating peer connection to ${p.nick} (${p.id})`);
       await makeOfferTo(p.id);
     }
   }
 
   // Display all peers
   for (const p of peers) {
+    console.log(`Displaying peer: ${p.nick} (${p.id}, self=${p.self === p.id})`);
     const li = document.createElement("li");
     li.className = "lp-peer-card";
 
@@ -290,9 +310,11 @@ async function updatePeers(peers) {
     li.appendChild(avatar);
     li.appendChild(main);
     peersListEl.appendChild(li);
+    console.log(`  Added UI for ${p.nick}`);
 
     // Create or update speaking state
     if (!speakingState.has(p.id)) {
+      console.log(`  Created speaking state for ${p.id}`);
       speakingState.set(p.id, {
         cardEl: li,
         analyser: null,
@@ -303,6 +325,7 @@ async function updatePeers(peers) {
     } else {
       const state = speakingState.get(p.id);
       state.cardEl = li;
+      console.log(`  Updated cardEl for existing peer ${p.id}`);
     }
   }
 
@@ -331,14 +354,17 @@ async function updatePeers(peers) {
 }
 
 function attachRemoteStream(peerId, stream) {
+  console.log(`attachRemoteStream for ${peerId}`);
   const audio = document.createElement("audio");
   audio.autoplay = true;
   audio.playsInline = true;
   audio.srcObject = stream;
   document.body.appendChild(audio);
+  console.log(`Audio element created for ${peerId}`);
 
   const peerState = speakingState.get(peerId);
   if (peerState && !peerState.analyser) {
+    console.log(`Attaching analyser for ${peerId}`);
     attachSpeakingAnalyser(peerState, stream, false);
   }
 }
