@@ -8,6 +8,8 @@ let nickname;
 let myId;
 let isMuted = false;
 let audioContext; // Shared audio context for analysis
+let availableAudioDevices = [];
+let currentDeviceIndex = 0;
 
 const roomTitleEl = document.getElementById("room-title");
 const userLabelEl = document.getElementById("user-label");
@@ -49,14 +51,28 @@ function setupUI() {
   deviceBtn.onclick = async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioDevices = devices.filter((d) => d.kind === "audioinput");
-      if (audioDevices.length <= 1) {
-        statusEl.textContent = "Only one mic available";
+      availableAudioDevices = devices.filter((d) => d.kind === "audioinput");
+
+      if (availableAudioDevices.length === 0) {
+        statusEl.textContent = "No microphones found";
         return;
       }
-      const newStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      if (availableAudioDevices.length === 1) {
+        statusEl.textContent = "Only one microphone available";
+        return;
+      }
+
+      // Cycle to next device
+      currentDeviceIndex = (currentDeviceIndex + 1) % availableAudioDevices.length;
+      const selectedDevice = availableAudioDevices[currentDeviceIndex];
+      const deviceLabel = selectedDevice.label || `Microphone ${currentDeviceIndex + 1}`;
+
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: selectedDevice.deviceId } },
+      });
       swapLocalStream(newStream);
-      statusEl.textContent = "Mic switched";
+      statusEl.textContent = `Switched to: ${deviceLabel}`;
     } catch (err) {
       statusEl.textContent = "Mic switch failed";
       console.error("Device switch error:", err);
