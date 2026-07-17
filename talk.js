@@ -248,7 +248,7 @@ function createPeerConnectionTo(peerId) {
   peerConnections.set(peerId, pc);
   console.log(`[PEER] Peer connection created for ${peerId}`);
   return pc;
-}}
+}
 
 async function makeOfferTo(peerId) {
   console.log(`makeOfferTo: ${peerId}`);
