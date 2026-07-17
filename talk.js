@@ -149,12 +149,27 @@ function getLocalNetworkId() {
 
 async function setupWebSocket() {
   const networkId = await getLocalNetworkId();
-  console.log("Network ID:", networkId);
+  console.log("[SETUP] Network ID:", networkId);
+  console.log("[SETUP] My nickname:", nickname);
   ws = new WebSocket(`${SIGNAL_URL}/?nick=${encodeURIComponent(nickname)}&net=${encodeURIComponent(networkId)}`);
 
   ws.onopen = () => {
     statusEl.textContent = "Connected";
-    console.log("WebSocket connected");
+    console.log("[WS] WebSocket connected");
+    // Test: send a ping to verify routing works
+    setTimeout(() => {
+      send({ type: "test-message", data: "Testing worker connection" });
+    }, 500);
+    
+    // Set timeout to check if we're still alone after 3 seconds
+    setTimeout(() => {
+      const peerCount = speakingState.size;
+      console.log(`[CHECK] After 3s, peer count: ${peerCount}`);
+      if (peerCount === 1) {
+        console.log(`[CHECK] Still alone - requesting peer update`);
+        send({ type: "get-peers" });
+      }
+    }, 3000);
   };
 
   ws.onmessage = async (event) => {
@@ -167,6 +182,10 @@ async function setupWebSocket() {
         break;
 
       case "peers":
+        console.log(`[WS] Peers update - got ${msg.peers.length} peer(s):`);
+        msg.peers.forEach((p) => {
+          console.log(`      - ${p.nick} (${p.id}, self=${p.self})`);
+        });
         await updatePeers(msg.peers);
         break;
 
@@ -186,36 +205,50 @@ async function setupWebSocket() {
 
   ws.onclose = () => {
     statusEl.textContent = "Disconnected.";
+    console.log("[WS] WebSocket closed");
   };
 }
 
 function createPeerConnectionTo(peerId) {
-  console.log(`createPeerConnectionTo: ${peerId}`);
+  console.log(`[PEER] createPeerConnectionTo: ${peerId}`);
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
 
-  localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+  console.log(`[PEER] Adding local audio tracks to ${peerId}...`);
+  const trackCount = localStream.getTracks().length;
+  console.log(`[PEER] Local stream has ${trackCount} tracks`);
+  localStream.getTracks().forEach((t, i) => {
+    console.log(`[PEER]   Track ${i}: kind=${t.kind}, enabled=${t.enabled}`);
+    pc.addTrack(t, localStream);
+  });
 
   pc.ontrack = (event) => {
-    console.log(`ontrack event from ${peerId}:`, event);
+    console.log(`[PEER] ontrack event from ${peerId}:`, event);
+    console.log(`[PEER]   streams: ${event.streams.length}`);
+    console.log(`[PEER]   tracks: ${event.track.kind}`);
     const stream = event.streams[0];
-    remoteStreams.set(peerId, stream);
-    console.log(`Stored remote stream for ${peerId}`);
-    attachRemoteStream(peerId, stream);
+    if (stream) {
+      console.log(`[PEER]   stream ID: ${stream.id}`);
+      remoteStreams.set(peerId, stream);
+      console.log(`[PEER] Stored remote stream for ${peerId}`);
+      attachRemoteStream(peerId, stream);
+    } else {
+      console.error(`[PEER] No stream in ontrack event from ${peerId}`);
+    }
   };
 
   pc.onicecandidate = (event) => {
     if (event.candidate) {
-      console.log(`Sending ICE candidate to ${peerId}`);
+      console.log(`[PEER] Sending ICE candidate to ${peerId}`);
       send({ type: "ice", candidate: event.candidate, to: peerId });
     }
   };
 
   peerConnections.set(peerId, pc);
-  console.log(`Peer connection created for ${peerId}`);
+  console.log(`[PEER] Peer connection created for ${peerId}`);
   return pc;
-}
+}}
 
 async function makeOfferTo(peerId) {
   console.log(`makeOfferTo: ${peerId}`);
@@ -268,19 +301,27 @@ function send(obj) {
 }
 
 async function updatePeers(peers) {
-  console.log("updatePeers called with:", peers.length, "peers");
-  peers.forEach((p) => {
-    console.log(`  - Peer: ${p.nick} (ID: ${p.id}, self: ${p.self === p.id})`);
-  });
+  console.log(`[UPDATE] updatePeers called with: ${peers.length} peer(s)`);
+  console.log(`[UPDATE] Previous peer count: ${speakingState.size}`);
+  
+  if (peers.length > speakingState.size) {
+    console.log(`[UPDATE] NEW PEERS DETECTED! Going from ${speakingState.size} to ${peers.length}`);
+  }
+  
   peersListEl.innerHTML = "";
   const newPeerIds = new Set(peers.map((p) => p.id));
   const oldPeerIds = new Set(speakingState.keys());
 
   // Create peer connections for new remote peers
   for (const p of peers) {
+    console.log(`[UPDATE] Processing peer: ${p.nick} (id=${p.id}, self=${p.self}, isSelf=${p.self === p.id})`);
     if (!p.self && !peerConnections.has(p.id)) {
-      console.log(`Creating peer connection to ${p.nick} (${p.id})`);
+      console.log(`[UPDATE] -> CREATING CONNECTION to ${p.nick}`);
       await makeOfferTo(p.id);
+    } else if (p.self === p.id) {
+      console.log(`[UPDATE] -> This is me (${p.nick})`);
+    } else {
+      console.log(`[UPDATE] -> Already have connection to ${p.nick}`);
     }
   }
 
@@ -354,31 +395,42 @@ async function updatePeers(peers) {
 }
 
 function attachRemoteStream(peerId, stream) {
-  console.log(`attachRemoteStream for ${peerId}`);
+  console.log(`[AUDIO] attachRemoteStream for ${peerId}`);
+  console.log(`[AUDIO] Stream ID: ${stream.id}, tracks: ${stream.getTracks().length}`);
+  stream.getTracks().forEach((t, i) => {
+    console.log(`[AUDIO]   Track ${i}: kind=${t.kind}, enabled=${t.enabled}`);
+  });
+  
   const audio = document.createElement("audio");
   audio.autoplay = true;
   audio.playsInline = true;
   audio.srcObject = stream;
   document.body.appendChild(audio);
-  console.log(`Audio element created for ${peerId}`);
+  console.log(`[AUDIO] Audio element created for ${peerId}, autoplay=${audio.autoplay}`);
 
   const peerState = speakingState.get(peerId);
   if (peerState && !peerState.analyser) {
-    console.log(`Attaching analyser for ${peerId}`);
+    console.log(`[AUDIO] Attaching analyser for ${peerId}`);
     attachSpeakingAnalyser(peerState, stream, false);
+  } else if (!peerState) {
+    console.error(`[AUDIO] No peer state found for ${peerId}`);
   }
 }
 
 function attachSpeakingAnalyser(peerState, stream, isSelf) {
+  console.log(`[ANALYSER] attachSpeakingAnalyser (self=${isSelf})`);
   if (!audioContext) {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    console.log(`[ANALYSER] Created audio context, state: ${audioContext.state}`);
   }
 
   // Resume audio context on first interaction
   if (audioContext.state === "suspended") {
+    console.log(`[ANALYSER] Resuming suspended audio context`);
     audioContext.resume();
   }
 
+  console.log(`[ANALYSER] Creating media stream source, stream tracks: ${stream.getTracks().length}`);
   const source = audioContext.createMediaStreamSource(stream);
   const analyser = audioContext.createAnalyser();
   analyser.fftSize = 512;
@@ -405,6 +457,7 @@ function attachSpeakingAnalyser(peerState, stream, isSelf) {
 
   tick();
   peerState.animId = animId;
+  console.log(`[ANALYSER] Analyser attached and running`);
 }
 
 function swapLocalStream(newStream) {
