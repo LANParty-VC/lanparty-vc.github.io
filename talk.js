@@ -328,11 +328,12 @@ async function updatePeers(peers) {
 
   // Create peer connections for new remote peers
   for (const p of peers) {
-    console.log(`[UPDATE] Processing peer: ${p.nick} (id=${p.id}, self=${p.self}, isSelf=${p.self === p.id})`);
-    if (!p.self && !peerConnections.has(p.id)) {
+    const isSelfFlag = p.id === myId;
+    console.log(`[UPDATE] Processing peer: ${p.nick} (id=${p.id}, self=${p.self}, isSelf=${isSelfFlag})`);
+    if (!isSelfFlag && !peerConnections.has(p.id)) {
       console.log(`[UPDATE] -> CREATING CONNECTION to ${p.nick}`);
       await makeOfferTo(p.id);
-    } else if (p.self === p.id) {
+    } else if (isSelfFlag) {
       console.log(`[UPDATE] -> This is me (${p.nick})`);
     } else {
       console.log(`[UPDATE] -> Already have connection to ${p.nick}`);
@@ -357,7 +358,7 @@ async function updatePeers(peers) {
 
     const metaEl = document.createElement("div");
     metaEl.className = "lp-peer-meta";
-    const isSelf = p.self === p.id;
+    const isSelf = p.id === myId;
     metaEl.textContent = isSelf ? "You" : "Connected";
 
     main.appendChild(nameEl);
