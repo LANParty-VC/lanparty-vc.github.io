@@ -82,6 +82,32 @@ function setupUI() {
   };
 
   leaveBtn.onclick = () => cleanupAndLeave();
+
+  // Add a small Resume Audio button to help with autoplay restrictions
+  const resumeBtn = document.createElement("button");
+  resumeBtn.id = "resume-audio-btn";
+  resumeBtn.textContent = "Resume Audio";
+  resumeBtn.style.marginLeft = "8px";
+  resumeBtn.onclick = async () => {
+    try {
+      if (audioContext && audioContext.state === "suspended") await audioContext.resume();
+    } catch (e) {
+      console.warn("[AUDIO] Failed to resume audio context:", e);
+    }
+    document.querySelectorAll("audio").forEach((a) => a.play().catch(() => {}));
+  };
+  // place near controls
+  document.body.appendChild(resumeBtn);
+
+  // Resume audio on first user gesture (helpful for autoplay-blocked contexts)
+  const resumeOnGesture = () => {
+    try {
+      if (audioContext && audioContext.state === "suspended") audioContext.resume();
+    } catch (e) {}
+    document.querySelectorAll("audio").forEach((a) => a.play().catch(() => {}));
+    document.removeEventListener("click", resumeOnGesture);
+  };
+  document.addEventListener("click", resumeOnGesture, { once: true });
 }
 
 function getLocalNetworkId() {
@@ -148,8 +174,40 @@ function getLocalNetworkId() {
 }
 
 async function setupWebSocket() {
-  const networkId = await getLocalNetworkId();
-  console.log("[SETUP] Network ID:", networkId);
+  const params = new URLSearchParams(location.search);
+  const forcedNet = params.get("net");
+  let networkId;
+  if (forcedNet) {
+    networkId = forcedNet;
+    console.log("[SETUP] Using forced network ID from URL:", networkId);
+  } else {
+    networkId = await getLocalNetworkId();
+    console.log("[SETUP] Network ID:", networkId);
+  }
+  // Show room/network id in UI so user can copy it for private windows
+  if (roomTitleEl) roomTitleEl.textContent = `Room: ${networkId}`;
+  else {
+    // create a small visible room label so private windows can copy it
+    const label = document.createElement("div");
+    label.id = "room-label";
+    label.style.position = "fixed";
+    label.style.top = "8px";
+    label.style.left = "8px";
+    label.style.background = "rgba(0,0,0,0.6)";
+    label.style.color = "#fff";
+    label.style.padding = "6px 8px";
+    label.style.borderRadius = "4px";
+    label.style.zIndex = "9999";
+    label.textContent = `Room: ${networkId}`;
+    const copy = document.createElement("button");
+    copy.textContent = "Copy";
+    copy.style.marginLeft = "8px";
+    copy.onclick = () => {
+      navigator.clipboard?.writeText(networkId).then(() => console.log("Room id copied"));
+    };
+    label.appendChild(copy);
+    document.body.appendChild(label);
+  }
   console.log("[SETUP] My nickname:", nickname);
   ws = new WebSocket(`${SIGNAL_URL}/?nick=${encodeURIComponent(nickname)}&net=${encodeURIComponent(networkId)}`);
 
@@ -179,6 +237,12 @@ async function setupWebSocket() {
     switch (msg.type) {
       case "room-info":
         myId = msg.myId;
+        // If peers arrived before we had myId, process them now
+        if (window._pendingPeers) {
+          console.log("Processing pending peers after room-info");
+          await updatePeers(window._pendingPeers);
+          window._pendingPeers = null;
+        }
         break;
 
       case "peers":
@@ -186,7 +250,13 @@ async function setupWebSocket() {
         msg.peers.forEach((p) => {
           console.log(`      - ${p.nick} (${p.id}, self=${p.self})`);
         });
-        await updatePeers(msg.peers);
+        // If we don't yet know our assigned myId, defer processing briefly
+        if (!myId) {
+          console.log("Peers arrived before myId; deferring updatePeers until room-info");
+          window._pendingPeers = msg.peers;
+        } else {
+          await updatePeers(msg.peers);
+        }
         break;
 
       case "offer":
@@ -218,6 +288,13 @@ function createPeerConnectionTo(peerId) {
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
+
+  pc.onconnectionstatechange = () => {
+    console.log(`[PEER] connectionState for ${peerId}:`, pc.connectionState);
+  };
+  pc.oniceconnectionstatechange = () => {
+    console.log(`[PEER] iceConnectionState for ${peerId}:`, pc.iceConnectionState);
+  };
 
   console.log(`[PEER] Adding local audio tracks to ${peerId}...`);
   const trackCount = localStream.getTracks().length;
@@ -264,6 +341,23 @@ function createPeerConnectionTo(peerId) {
   return pc;
 }
 
+// Helper to retry setRemoteDescription when browser reports wrong state transiently
+async function safeSetRemoteDescription(pc, desc) {
+  const maxRetries = 6;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      await pc.setRemoteDescription(desc);
+      return;
+    } catch (e) {
+      console.warn(`[PEER] setRemoteDescription failed (attempt ${attempt + 1}):`, e);
+      if (e && e.name !== "InvalidStateError") throw e;
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    }
+  }
+  // last try, let it throw
+  await pc.setRemoteDescription(desc);
+}
+
 async function makeOfferTo(peerId) {
   console.log(`makeOfferTo: ${peerId}`);
   let pc = peerConnections.get(peerId);
@@ -280,8 +374,12 @@ async function handleOffer(msg) {
   console.log(`handleOffer from ${peerId}`);
   let pc = peerConnections.get(peerId);
   if (!pc) pc = createPeerConnectionTo(peerId);
-
-  await pc.setRemoteDescription(msg.sdp);
+  try {
+    await safeSetRemoteDescription(pc, msg.sdp);
+  } catch (e) {
+    console.error(`[PEER] Failed to set remote description for offer from ${peerId}:`, e);
+    return;
+  }
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
   console.log(`Sending answer to ${peerId}`);
@@ -292,7 +390,13 @@ async function handleAnswer(msg) {
   const peerId = msg.from;
   console.log(`handleAnswer from ${peerId}`);
   const pc = peerConnections.get(peerId);
-  if (pc) await pc.setRemoteDescription(msg.sdp);
+  if (pc) {
+    try {
+      await safeSetRemoteDescription(pc, msg.sdp);
+    } catch (e) {
+      console.error(`[PEER] Failed to set remote description for answer from ${peerId}:`, e);
+    }
+  }
 }
 
 async function handleIce(msg) {
@@ -421,6 +525,12 @@ function attachRemoteStream(peerId, stream) {
   audio.playsInline = true;
   audio.srcObject = stream;
   document.body.appendChild(audio);
+  // Attempt to play; browsers may block autoplay without interaction
+  audio.play().catch((err) => {
+    console.warn(`[AUDIO] autoplay failed for ${peerId}:`, err);
+    // try again after a short delay (sometimes audio system needs time)
+    setTimeout(() => audio.play().catch(() => {}), 500);
+  });
   console.log(`[AUDIO] Audio element created for ${peerId}, autoplay=${audio.autoplay}`);
 
   const peerState = speakingState.get(peerId);
