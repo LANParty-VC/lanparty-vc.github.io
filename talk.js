@@ -496,5 +496,24 @@ function swapLocalStream(newStream) {
   const selfPeer = [...speakingState.values()].find((s) => s.self);
   if (selfPeer) attachSpeakingAnalyser(selfPeer, localStream, true);
 }
+function handleSpeakingState(peerId, speaking) {
+  console.log(`[SPEAK] Peer ${peerId} is ${speaking ? "speaking" : "quiet"}`);
+  const peerState = speakingState.get(peerId);
+  if (peerState) {
+    peerState.cardEl.classList.toggle("lp-speaking-other", speaking);
+  }
+}
 
-function handleSpeakingState(peerId, speaking) {\n  console.log(`[SPEAK] Peer ${peerId} is ${speaking ? \"speaking\" : \"quiet\"}`);\n  const peerState = speakingState.get(peerId);\n  if (peerState) {\n    peerState.cardEl.classList.toggle(\"lp-speaking-other\", speaking);\n  }\n}\n\nfunction cleanupAndLeave() {\n  ws?.close();\n  for (const pc of peerConnections.values()) {\n    pc.close();\n  }\n  peerConnections.clear();\n  for (const state of speakingState.values()) {\n    if (state.animId) cancelAnimationFrame(state.animId);\n  }\n  speakingState.clear();\n  localStream?.getTracks().forEach((t) => t.stop());\n  window.location.href = \"index.html\";\n}
+function cleanupAndLeave() {
+  ws?.close();
+  for (const pc of peerConnections.values()) {
+    pc.close();
+  }
+  peerConnections.clear();
+  for (const state of speakingState.values()) {
+    if (state.animId) cancelAnimationFrame(state.animId);
+  }
+  speakingState.clear();
+  localStream?.getTracks().forEach((t) => t.stop());
+  window.location.href = "index.html";
+}
