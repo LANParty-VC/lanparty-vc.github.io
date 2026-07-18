@@ -497,6 +497,8 @@ function swapLocalStream(newStream) {
   const selfPeer = [...speakingState.values()].find((s) => s.self);
   if (selfPeer) attachSpeakingAnalyser(selfPeer, localStream, true);
 }
+
+
 function handleSpeakingState(peerId, speaking) {
   console.log(`[SPEAK] Peer ${peerId} is ${speaking ? "speaking" : "quiet"}`);
   const peerState = speakingState.get(peerId);
