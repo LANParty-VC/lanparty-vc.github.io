@@ -83,31 +83,7 @@ function setupUI() {
 
   leaveBtn.onclick = () => cleanupAndLeave();
 
-  // Add a small Resume Audio button to help with autoplay restrictions
-  const resumeBtn = document.createElement("button");
-  resumeBtn.id = "resume-audio-btn";
-  resumeBtn.textContent = "Resume Audio";
-  resumeBtn.style.marginLeft = "8px";
-  resumeBtn.onclick = async () => {
-    try {
-      if (audioContext && audioContext.state === "suspended") await audioContext.resume();
-    } catch (e) {
-      console.warn("[AUDIO] Failed to resume audio context:", e);
-    }
-    document.querySelectorAll("audio").forEach((a) => a.play().catch(() => {}));
-  };
-  // place near controls
-  document.body.appendChild(resumeBtn);
-
-  // Resume audio on first user gesture (helpful for autoplay-blocked contexts)
-  const resumeOnGesture = () => {
-    try {
-      if (audioContext && audioContext.state === "suspended") audioContext.resume();
-    } catch (e) {}
-    document.querySelectorAll("audio").forEach((a) => a.play().catch(() => {}));
-    document.removeEventListener("click", resumeOnGesture);
-  };
-  document.addEventListener("click", resumeOnGesture, { once: true });
+  // (No resume audio UI — rely on browser autoplay behavior for LAN clients)
 }
 
 function getLocalNetworkId() {
@@ -174,40 +150,9 @@ function getLocalNetworkId() {
 }
 
 async function setupWebSocket() {
-  const params = new URLSearchParams(location.search);
-  const forcedNet = params.get("net");
-  let networkId;
-  if (forcedNet) {
-    networkId = forcedNet;
-    console.log("[SETUP] Using forced network ID from URL:", networkId);
-  } else {
-    networkId = await getLocalNetworkId();
-    console.log("[SETUP] Network ID:", networkId);
-  }
-  // Show room/network id in UI so user can copy it for private windows
-  if (roomTitleEl) roomTitleEl.textContent = `Room: ${networkId}`;
-  else {
-    // create a small visible room label so private windows can copy it
-    const label = document.createElement("div");
-    label.id = "room-label";
-    label.style.position = "fixed";
-    label.style.top = "8px";
-    label.style.left = "8px";
-    label.style.background = "rgba(0,0,0,0.6)";
-    label.style.color = "#fff";
-    label.style.padding = "6px 8px";
-    label.style.borderRadius = "4px";
-    label.style.zIndex = "9999";
-    label.textContent = `Room: ${networkId}`;
-    const copy = document.createElement("button");
-    copy.textContent = "Copy";
-    copy.style.marginLeft = "8px";
-    copy.onclick = () => {
-      navigator.clipboard?.writeText(networkId).then(() => console.log("Room id copied"));
-    };
-    label.appendChild(copy);
-    document.body.appendChild(label);
-  }
+  // LAN-only: detect local network id automatically and do not expose it in the UI or URL
+  const networkId = await getLocalNetworkId();
+  console.log("[SETUP] Network ID:", networkId);
   console.log("[SETUP] My nickname:", nickname);
   ws = new WebSocket(`${SIGNAL_URL}/?nick=${encodeURIComponent(nickname)}&net=${encodeURIComponent(networkId)}`);
 
