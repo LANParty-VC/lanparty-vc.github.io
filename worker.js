@@ -26,18 +26,26 @@ export default {
       }
       roomKey = `code:${roomCode}`;
     } else {
-      if (url.searchParams.get("net") !== "network-auto") {
-        return new Response("A six-digit room code or automatic network room is required.", {
-          status: 400,
-        });
+      const networkId = url.searchParams.get("net") || "";
+      if (networkId === "network-auto") {
+        const clientIp = request.headers.get("CF-Connecting-IP");
+        if (!clientIp || clientIp.length > 64) {
+          return new Response("Could not determine your public network address.", {
+            status: 400,
+          });
+        }
+        roomKey = `network:${clientIp}`;
+      } else {
+        const publicIpv4 = networkId.startsWith("network-")
+          ? networkId.slice("network-".length)
+          : "";
+        if (!isValidIpv4(publicIpv4)) {
+          return new Response("A six-digit room code or valid network room is required.", {
+            status: 400,
+          });
+        }
+        roomKey = `network:${publicIpv4}`;
       }
-      const clientIp = request.headers.get("CF-Connecting-IP");
-      if (!clientIp || clientIp.length > 64) {
-        return new Response("Could not determine your public network address.", {
-          status: 400,
-        });
-      }
-      roomKey = `network:${clientIp}`;
     }
 
     const roomId = env.ROOMS.idFromName(roomKey);
@@ -200,6 +208,14 @@ function sanitizeNickname(value) {
     .trim()
     .slice(0, 32);
   return nickname || "Guest";
+}
+
+function isValidIpv4(value) {
+  const octets = value.split(".");
+  return (
+    octets.length === 4 &&
+    octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)
+  );
 }
 
 function isAllowedOrigin(origin, configuredOrigins = "") {

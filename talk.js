@@ -4,7 +4,7 @@ let ws;
 let peerConnections = new Map(); // peerId -> RTCPeerConnection
 let remoteStreams = new Map(); // peerId -> MediaStream
 let pendingIceCandidates = new Map(); // peerId -> RTCIceCandidate[]
-let remoteAudioElements = new Map(); // peerId -> HTMLAudioElement
+let remoteAudioPlayers = new Map(); // peerId -> audio element and visible controls
 let localStream;
 let nickname;
 let myId;
@@ -119,10 +119,45 @@ function setupUI() {
   leaveBtn.onclick = () => cleanupAndLeave();
 }
 
+async function detectNetworkRoom() {
+  const response = await fetch("https://api4.ipify.org?format=json", {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`Network lookup failed with HTTP ${response.status}.`);
+  }
+
+  const result = await response.json();
+  if (!isValidIpv4(result.ip)) {
+    throw new Error("Network lookup did not return a valid IPv4 address.");
+  }
+  return `network-${result.ip}`;
+}
+
+function isValidIpv4(value) {
+  if (typeof value !== "string") return false;
+  const octets = value.split(".");
+  return (
+    octets.length === 4 &&
+    octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)
+  );
+}
+
 async function setupWebSocket() {
-  statusEl.textContent =
-    roomMode === "network" ? "Detecting your network…" : `Joining room ${roomCode}…`;
-  const roomKey = roomMode === "network" ? "network-auto" : roomCode;
+  let roomKey = roomCode;
+  if (roomMode === "network") {
+    statusEl.textContent = "Finding your network…";
+    try {
+      roomKey = await detectNetworkRoom();
+    } catch (err) {
+      console.error("[NETWORK] Could not detect public IPv4:", err);
+      statusEl.textContent =
+        "Automatic network joining needs IPv4 lookup access. Try a six-digit room code.";
+      return;
+    }
+  } else {
+    statusEl.textContent = `Joining room ${roomCode}…`;
+  }
 
   const signalUrl = new URL(SIGNAL_URL);
   signalUrl.searchParams.set("nick", nickname);
@@ -375,8 +410,8 @@ async function updatePeers(peers) {
     main.appendChild(metaEl);
     li.appendChild(avatar);
     li.appendChild(main);
-    if (remoteAudioElements.has(peerId)) {
-      li.appendChild(remoteAudioElements.get(peerId));
+    if (!isSelf) {
+      li.appendChild(ensureRemoteAudioPlayer(peerId).controls);
     }
     peersListEl.appendChild(li);
 
@@ -404,8 +439,11 @@ async function updatePeers(peers) {
       peerConnections.delete(peerId);
       remoteStreams.delete(peerId);
       pendingIceCandidates.delete(peerId);
-      remoteAudioElements.get(peerId)?.remove();
-      remoteAudioElements.delete(peerId);
+      const audioPlayer = remoteAudioPlayers.get(peerId);
+      audioPlayer?.audio.pause();
+      if (audioPlayer) audioPlayer.audio.srcObject = null;
+      audioPlayer?.controls.remove();
+      remoteAudioPlayers.delete(peerId);
       speakingState.delete(peerId);
     }
   }
@@ -422,26 +460,87 @@ async function updatePeers(peers) {
 
 function attachRemoteStream(peerId, stream) {
   remoteStreams.set(peerId, stream);
-  let audio = remoteAudioElements.get(peerId);
-  if (!audio) {
-    audio = document.createElement("audio");
-    audio.className = "lp-peer-audio";
-    audio.autoplay = true;
-    audio.controls = true;
-    audio.setAttribute("aria-label", "Remote participant audio");
-    remoteAudioElements.set(peerId, audio);
-  }
-  audio.srcObject = stream;
+  const player = ensureRemoteAudioPlayer(peerId);
+  player.audio.srcObject = stream;
+  player.playButton.disabled = false;
+  player.volumeInput.disabled = false;
+  player.status.textContent = "Audio ready";
   const peerState = speakingState.get(peerId);
-  if (peerState) peerState.cardEl.appendChild(audio);
-  audio.play().catch((err) => {
+  if (peerState && !player.controls.isConnected) {
+    peerState.cardEl.appendChild(player.controls);
+  }
+  player.audio.play().then(() => {
+    player.playButton.textContent = "Pause";
+    player.status.textContent = "Playing";
+  }).catch((err) => {
     console.warn(`[AUDIO] Could not autoplay audio from ${peerId}:`, err);
-    statusEl.textContent = "Press play on the participant audio control to hear them.";
+    player.status.textContent = "Press Play to hear this participant";
+    player.playButton.textContent = "Play";
   });
 
   if (peerState && !peerState.analyser && stream.getAudioTracks().length) {
     attachSpeakingAnalyser(peerState, stream, false);
   }
+}
+
+function ensureRemoteAudioPlayer(peerId) {
+  let player = remoteAudioPlayers.get(peerId);
+  if (player) return player;
+
+  const audio = document.createElement("audio");
+  audio.autoplay = true;
+  audio.preload = "none";
+  audio.setAttribute("aria-label", "Remote participant audio output");
+
+  const controls = document.createElement("div");
+  controls.className = "lp-peer-audio-controls";
+
+  const playButton = document.createElement("button");
+  playButton.className = "lp-button lp-button-secondary lp-audio-play";
+  playButton.type = "button";
+  playButton.textContent = "Waiting for audio";
+  playButton.disabled = true;
+  playButton.addEventListener("click", async () => {
+    if (audio.paused) {
+      try {
+        await audio.play();
+        playButton.textContent = "Pause";
+        status.textContent = "Playing";
+      } catch (err) {
+        console.error(`[AUDIO] Could not play audio from ${peerId}:`, err);
+        status.textContent = "Playback failed; check browser audio permissions.";
+      }
+    } else {
+      audio.pause();
+      playButton.textContent = "Play";
+      status.textContent = "Paused";
+    }
+  });
+
+  const volumeLabel = document.createElement("label");
+  volumeLabel.className = "lp-peer-volume";
+  volumeLabel.textContent = "Volume";
+
+  const volumeInput = document.createElement("input");
+  volumeInput.type = "range";
+  volumeInput.min = "0";
+  volumeInput.max = "1";
+  volumeInput.step = "0.05";
+  volumeInput.value = "1";
+  volumeInput.disabled = true;
+  volumeInput.setAttribute("aria-label", "Participant volume");
+  volumeInput.addEventListener("input", () => {
+    audio.volume = Number(volumeInput.value);
+  });
+  volumeLabel.appendChild(volumeInput);
+
+  const status = document.createElement("span");
+  status.className = "lp-peer-audio-status";
+  status.textContent = "Waiting for audio…";
+  controls.append(playButton, volumeLabel, status);
+  player = { audio, controls, playButton, volumeInput, status };
+  remoteAudioPlayers.set(peerId, player);
+  return player;
 }
 
 function attachSpeakingAnalyser(peerState, stream, isSelf) {
@@ -550,10 +649,10 @@ function cleanupAndLeave() {
   }
   speakingState.clear();
   localStream?.getTracks().forEach((t) => t.stop());
-  for (const audio of remoteAudioElements.values()) {
-    audio.pause();
-    audio.srcObject = null;
+  for (const player of remoteAudioPlayers.values()) {
+    player.audio.pause();
+    player.audio.srcObject = null;
   }
-  remoteAudioElements.clear();
+  remoteAudioPlayers.clear();
   window.location.href = "index.html";
 }

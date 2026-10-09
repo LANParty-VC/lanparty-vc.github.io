@@ -53,7 +53,8 @@
             />
           </label>
           <p id="room-help" class="lp-mini-note">
-            Join your network automatically, create a code room, or enter a code to join.
+            Automatic matching uses your shared public IPv4 address. Use a six-digit code if
+            that is unavailable or you want to connect across networks.
           </p>
 
           <div class="lp-form-actions">
@@ -88,12 +89,12 @@
       <aside class="lp-sidecard lp-card">
         <h2 class="lp-section-title lp-how-title">How it works</h2>
         <ul class="lp-bullets">
-          <li><span>1.</span> Network rooms are matched using your public network address.</li>
+          <li><span>1.</span> Automatic rooms match people using the same public IPv4 address; this is not exact private-Wi-Fi detection.</li>
           <li><span>2.</span> Use a six-digit code to join a separate room.</li>
           <li><span>3.</span> Audio connects peer-to-peer with WebRTC.</li>
         </ul>
         <p class="lp-mini-note">
-          Network detection uses STUN; allow microphone access to join.
+          Allow microphone access to join. Automatic matching may not work across VPNs or different internet connections.
         </p>
       </aside>
     </main>
