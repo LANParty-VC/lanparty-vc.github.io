@@ -15,8 +15,14 @@
     <header class="lp-header">
       <div>
         <p class="lp-subtitle" id="user-label"></p>
+        <p class="lp-room-label">
+          Room: <strong id="room-title"></strong>
+          <button id="copy-room-btn" class="lp-button lp-button-secondary" type="button">
+            Copy code
+          </button>
+        </p>
       </div>
-      <button id="leave-btn" class="lp-button lp-button-danger">Leave</button>
+      <button id="leave-btn" class="lp-button lp-button-danger" type="button">Leave</button>
     </header>
 
     <main class="lp-main">
@@ -26,11 +32,10 @@
       </section>
 
       <section class="lp-card">
-        <h2 class="lp-section-title">Audio</h2>
-
+        <h2 class="lp-section-title">Controls</h2>
         <div class="lp-audio-controls">
-          <button id="mute-btn" class="lp-button lp-button-secondary">Mute</button>
-          <button id="device-btn" class="lp-button lp-button-secondary">Switch Mic</button>
+          <button id="mute-btn" class="lp-button lp-button-secondary" type="button" disabled>Mute</button>
+          <button id="device-btn" class="lp-button lp-button-secondary" type="button" disabled>Switch Mic</button>
         </div>
 
         <p id="status" class="lp-status">Connecting…</p>

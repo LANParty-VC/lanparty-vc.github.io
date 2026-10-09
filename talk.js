@@ -3,15 +3,17 @@ const SIGNAL_URL = "wss://lanpartyvc-signal.arahomeschool23.workers.dev";
 let ws;
 let peerConnections = new Map(); // peerId -> RTCPeerConnection
 let remoteStreams = new Map(); // peerId -> MediaStream
+let pendingIceCandidates = new Map(); // peerId -> RTCIceCandidate[]
+let remoteAudioElements = new Map(); // peerId -> HTMLAudioElement
 let localStream;
 let nickname;
 let myId;
+let roomCode;
+let roomMode;
 let isMuted = false;
 let audioContext; // Shared audio context for analysis
 let availableAudioDevices = [];
 let currentDeviceIndex = 0;
-let cachedNetworkId = null;
-let broadcastChannel = null;
 
 const roomTitleEl = document.getElementById("room-title");
 const userLabelEl = document.getElementById("user-label");
@@ -20,6 +22,7 @@ const peersListEl = document.getElementById("peers-list");
 
 const muteBtn = document.getElementById("mute-btn");
 const deviceBtn = document.getElementById("device-btn");
+const copyRoomBtn = document.getElementById("copy-room-btn");
 const leaveBtn = document.getElementById("leave-btn");
 
 const speakingState = new Map(); // peerId -> { cardEl, analyser, source, self }
@@ -27,30 +30,57 @@ const speakingState = new Map(); // peerId -> { cardEl, analyser, source, self }
 init();
 
 async function init() {
+  setupUI();
+
   const params = new URLSearchParams(location.search);
   nickname = params.get("nick") || "Guest";
+  roomCode = params.get("room") || "";
+  roomMode = params.get("mode") === "network" ? "network" : "code";
 
-  userLabelEl.textContent = `You are: ${nickname}`;
-
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (err) {
-    statusEl.textContent = "Mic access denied.";
+  if (roomMode === "code" && !/^\d{6}$/.test(roomCode)) {
+    statusEl.textContent = "Invalid room code. Return to the home page and join a room.";
     return;
   }
 
-  setupUI();
+  userLabelEl.textContent = `You are: ${nickname}`;
+  roomTitleEl.textContent = roomMode === "network" ? "Automatic network room" : roomCode;
+  copyRoomBtn.hidden = roomMode !== "code";
+
+  try {
+    statusEl.textContent = "Requesting microphone access…";
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    muteBtn.disabled = false;
+    deviceBtn.disabled = false;
+  } catch (err) {
+    console.error("Microphone access error:", err);
+    statusEl.textContent = "Microphone access is required to join.";
+    return;
+  }
+
   await setupWebSocket();
 }
 
 function setupUI() {
   muteBtn.onclick = () => {
+    if (!localStream) return;
     isMuted = !isMuted;
     localStream.getAudioTracks().forEach((t) => (t.enabled = !isMuted));
     muteBtn.textContent = isMuted ? "Unmute" : "Mute";
   };
 
+  copyRoomBtn.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      copyRoomBtn.textContent = "Copied";
+      setTimeout(() => (copyRoomBtn.textContent = "Copy code"), 1500);
+    } catch (err) {
+      console.error("Could not copy room code:", err);
+      statusEl.textContent = `Share room code ${roomCode} with your friends.`;
+    }
+  };
+
   deviceBtn.onclick = async () => {
+    if (!localStream) return;
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       availableAudioDevices = devices.filter((d) => d.kind === "audioinput");
@@ -60,128 +90,72 @@ function setupUI() {
         return;
       }
 
-      if (availableAudioDevices.length === 1) {
+      const activeDeviceId = localStream.getAudioTracks()[0]?.getSettings().deviceId;
+      if (availableAudioDevices.length === 1 ||
+          (availableAudioDevices.length > 1 &&
+           availableAudioDevices.every((device) => device.deviceId === activeDeviceId))) {
         statusEl.textContent = "Only one microphone available";
         return;
       }
 
-      // Cycle to next device
-      currentDeviceIndex = (currentDeviceIndex + 1) % availableAudioDevices.length;
+      const activeIndex = availableAudioDevices.findIndex(
+        (device) => device.deviceId === activeDeviceId,
+      );
+      currentDeviceIndex = (activeIndex + 1) % availableAudioDevices.length;
       const selectedDevice = availableAudioDevices[currentDeviceIndex];
       const deviceLabel = selectedDevice.label || `Microphone ${currentDeviceIndex + 1}`;
 
       const newStream = await navigator.mediaDevices.getUserMedia({
         audio: { deviceId: { exact: selectedDevice.deviceId } },
       });
-      swapLocalStream(newStream);
+      await swapLocalStream(newStream);
       statusEl.textContent = `Switched to: ${deviceLabel}`;
     } catch (err) {
-      statusEl.textContent = "Mic switch failed";
+      statusEl.textContent = `Mic switch failed: ${err.message || "could not access that microphone"}`;
       console.error("Device switch error:", err);
     }
   };
 
   leaveBtn.onclick = () => cleanupAndLeave();
-
-  // (No resume audio UI — rely on browser autoplay behavior for LAN clients)
-}
-
-function getLocalNetworkId() {
-  return new Promise((resolve) => {
-    // Check if we already have a cached network ID
-    if (cachedNetworkId) {
-      console.log("Using cached network ID:", cachedNetworkId);
-      resolve(cachedNetworkId);
-      return;
-    }
-
-    // Try BroadcastChannel to sync across tabs
-    if (typeof BroadcastChannel !== "undefined") {
-      try {
-        broadcastChannel = new BroadcastChannel("lanpartyNetId");
-        broadcastChannel.onmessage = (event) => {
-          if (event.data.netId && !cachedNetworkId) {
-            cachedNetworkId = event.data.netId;
-            console.log("Received network ID from broadcast:", cachedNetworkId);
-            resolve(cachedNetworkId);
-          }
-        };
-      } catch (e) {
-        console.log("BroadcastChannel not available");
-      }
-    }
-
-    // Detect local IP via WebRTC
-    const pc = new RTCPeerConnection({ iceServers: [] });
-    pc.createDataChannel("");
-    pc.createOffer()
-      .then((offer) => pc.setLocalDescription(offer))
-      .catch(() => {
-        const fallback = "local-" + Math.random().toString(36).substr(2, 9);
-        cachedNetworkId = fallback;
-        if (broadcastChannel) broadcastChannel.postMessage({ netId: fallback });
-        resolve(fallback);
-      });
-
-    pc.onicecandidate = (ice) => {
-      if (!ice || !ice.candidate || cachedNetworkId) return;
-      const match = ice.candidate.candidate.match(/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
-      if (match) {
-        cachedNetworkId = match[1];
-        console.log("Detected network ID:", cachedNetworkId);
-        if (broadcastChannel) broadcastChannel.postMessage({ netId: cachedNetworkId });
-        resolve(cachedNetworkId);
-        pc.close();
-      }
-    };
-
-    setTimeout(() => {
-      if (cachedNetworkId) return;
-      const fallback = "local-" + Math.random().toString(36).substr(2, 9);
-      cachedNetworkId = fallback;
-      console.log("Network ID timeout, using fallback:", fallback);
-      if (broadcastChannel) broadcastChannel.postMessage({ netId: fallback });
-      resolve(fallback);
-      try {
-        pc.close();
-      } catch {}
-    }, 2000);
-  });
 }
 
 async function setupWebSocket() {
-  // LAN-only: detect local network id automatically and do not expose it in the UI or URL
-  const networkId = await getLocalNetworkId();
-  console.log("[SETUP] Network ID:", networkId);
-  console.log("[SETUP] My nickname:", nickname);
-  ws = new WebSocket(`${SIGNAL_URL}/?nick=${encodeURIComponent(nickname)}&net=${encodeURIComponent(networkId)}`);
+  statusEl.textContent =
+    roomMode === "network" ? "Detecting your network…" : `Joining room ${roomCode}…`;
+  const roomKey = roomMode === "network" ? "network-auto" : roomCode;
+
+  const signalUrl = new URL(SIGNAL_URL);
+  signalUrl.searchParams.set("nick", nickname);
+  signalUrl.searchParams.set("net", roomKey);
+  if (roomMode === "code") signalUrl.searchParams.set("room", roomCode);
+  ws = new WebSocket(signalUrl);
 
   ws.onopen = () => {
-    statusEl.textContent = "Connected";
+    statusEl.textContent =
+      roomMode === "network"
+        ? "Connected to your network room"
+        : `Connected to room ${roomCode}`;
     console.log("[WS] WebSocket connected");
-    // Test: send a ping to verify routing works
     setTimeout(() => {
-      send({ type: "test-message", data: "Testing worker connection" });
-    }, 500);
-    
-    // Set timeout to check if we're still alone after 3 seconds
-    setTimeout(() => {
-      const peerCount = speakingState.size;
-      console.log(`[CHECK] After 3s, peer count: ${peerCount}`);
-      if (peerCount === 1) {
-        console.log(`[CHECK] Still alone - requesting peer update`);
+      if (ws?.readyState === WebSocket.OPEN && speakingState.size <= 1) {
         send({ type: "get-peers" });
       }
     }, 3000);
   };
 
   ws.onmessage = async (event) => {
-    const msg = JSON.parse(event.data);
+    let msg;
+    try {
+      msg = JSON.parse(event.data);
+    } catch (err) {
+      console.error("[WS] Ignoring invalid signaling message:", err);
+      return;
+    }
     console.log("Message received:", msg.type, msg);
 
     switch (msg.type) {
       case "room-info":
-        myId = msg.myId;
+        myId = String(msg.myId);
         // If peers arrived before we had myId, process them now
         if (window._pendingPeers) {
           console.log("Processing pending peers after room-info");
@@ -219,70 +193,54 @@ async function setupWebSocket() {
       case "speaking":
         handleSpeakingState(msg.from, msg.speaking);
         break;
+
+      case "error":
+        statusEl.textContent = msg.message || "The signaling service rejected the room connection.";
+        break;
     }
   };
 
   ws.onclose = () => {
-    statusEl.textContent = "Disconnected.";
+    statusEl.textContent = "Disconnected from the signaling server.";
     console.log("[WS] WebSocket closed");
+  };
+
+  ws.onerror = (event) => {
+    console.error("[WS] WebSocket error:", event);
+    statusEl.textContent = "Could not connect to the signaling server.";
   };
 }
 
 function createPeerConnectionTo(peerId) {
-  console.log(`[PEER] createPeerConnectionTo: ${peerId}`);
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
 
   pc.onconnectionstatechange = () => {
-    console.log(`[PEER] connectionState for ${peerId}:`, pc.connectionState);
-  };
-  pc.oniceconnectionstatechange = () => {
-    console.log(`[PEER] iceConnectionState for ${peerId}:`, pc.iceConnectionState);
+    if (pc.connectionState === "failed") {
+      statusEl.textContent = "Peer connection failed. Try joining again or use a room code.";
+    }
   };
 
-  console.log(`[PEER] Adding local audio tracks to ${peerId}...`);
-  const trackCount = localStream.getTracks().length;
-  console.log(`[PEER] Local stream has ${trackCount} tracks`);
-  if (trackCount === 0) {
-    console.error(`[PEER] ERROR: No audio tracks in local stream!`);
-  }
-  localStream.getTracks().forEach((t, i) => {
-    console.log(`[PEER]   Track ${i}: kind=${t.kind}, enabled=${t.enabled}`);
-    pc.addTrack(t, localStream);
-  });
-  
-  // Verify tracks were added
-  const senders = pc.getSenders();
-  console.log(`[PEER] After addTrack, peer connection has ${senders.length} senders`);
-  senders.forEach((s, i) => {
-    console.log(`[PEER]   Sender ${i}: kind=${s.track?.kind}, enabled=${s.track?.enabled}`);
-  });
+  localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
   pc.ontrack = (event) => {
-    console.log(`[PEER] ontrack event from ${peerId}:`, event);
-    console.log(`[PEER]   streams: ${event.streams.length}`);
-    console.log(`[PEER]   tracks: ${event.track.kind}`);
-    const stream = event.streams[0];
-    if (stream) {
-      console.log(`[PEER]   stream ID: ${stream.id}`);
-      remoteStreams.set(peerId, stream);
-      console.log(`[PEER] Stored remote stream for ${peerId}`);
-      attachRemoteStream(peerId, stream);
-    } else {
-      console.error(`[PEER] No stream in ontrack event from ${peerId}`);
+    const stream =
+      event.streams[0] || remoteStreams.get(peerId) || new MediaStream();
+    if (!event.streams[0] && !stream.getTracks().includes(event.track)) {
+      stream.addTrack(event.track);
     }
+    remoteStreams.set(peerId, stream);
+    attachRemoteStream(peerId, stream);
   };
 
   pc.onicecandidate = (event) => {
     if (event.candidate) {
-      console.log(`[PEER] Sending ICE candidate to ${peerId}`);
       send({ type: "ice", candidate: event.candidate, to: peerId });
     }
   };
 
   peerConnections.set(peerId, pc);
-  console.log(`[PEER] Peer connection created for ${peerId}`);
   return pc;
 }
 
@@ -304,94 +262,97 @@ async function safeSetRemoteDescription(pc, desc) {
 }
 
 async function makeOfferTo(peerId) {
-  console.log(`makeOfferTo: ${peerId}`);
   let pc = peerConnections.get(peerId);
   if (!pc) pc = createPeerConnectionTo(peerId);
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  console.log(`Sending offer to ${peerId}`);
-  send({ type: "offer", sdp: offer, to: peerId });
+  send({ type: "offer", sdp: pc.localDescription, to: peerId });
 }
 
 async function handleOffer(msg) {
-  const peerId = msg.from;
-  console.log(`handleOffer from ${peerId}`);
+  const peerId = String(msg.from);
   let pc = peerConnections.get(peerId);
   if (!pc) pc = createPeerConnectionTo(peerId);
   try {
     await safeSetRemoteDescription(pc, msg.sdp);
+    await flushIceCandidates(peerId, pc);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    send({ type: "answer", sdp: pc.localDescription, to: peerId });
   } catch (e) {
-    console.error(`[PEER] Failed to set remote description for offer from ${peerId}:`, e);
-    return;
+    console.error(`[PEER] Failed to answer offer from ${peerId}:`, e);
   }
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  console.log(`Sending answer to ${peerId}`);
-  send({ type: "answer", sdp: answer, to: peerId });
 }
 
 async function handleAnswer(msg) {
-  const peerId = msg.from;
-  console.log(`handleAnswer from ${peerId}`);
+  const peerId = String(msg.from);
   const pc = peerConnections.get(peerId);
   if (pc) {
     try {
       await safeSetRemoteDescription(pc, msg.sdp);
+      await flushIceCandidates(peerId, pc);
     } catch (e) {
-      console.error(`[PEER] Failed to set remote description for answer from ${peerId}:`, e);
+      console.error(`[PEER] Failed to apply answer from ${peerId}:`, e);
     }
   }
 }
 
 async function handleIce(msg) {
-  const peerId = msg.from;
+  const peerId = String(msg.from);
   const pc = peerConnections.get(peerId);
-  if (pc && msg.candidate) {
-    console.log(`Adding ICE candidate from ${peerId}`);
+  if (!msg.candidate) return;
+  if (!pc || !pc.remoteDescription) {
+    const candidates = pendingIceCandidates.get(peerId) || [];
+    candidates.push(msg.candidate);
+    pendingIceCandidates.set(peerId, candidates);
+    return;
+  }
+  try {
+    await pc.addIceCandidate(msg.candidate);
+  } catch (e) {
+    console.error(`Error adding ICE candidate from ${peerId}:`, e);
+  }
+}
+
+async function flushIceCandidates(peerId, pc) {
+  const candidates = pendingIceCandidates.get(peerId) || [];
+  pendingIceCandidates.delete(peerId);
+  for (const candidate of candidates) {
     try {
-      await pc.addIceCandidate(msg.candidate);
+      await pc.addIceCandidate(candidate);
     } catch (e) {
-      console.error(`Error adding ICE candidate from ${peerId}:`, e);
+      console.error(`Error adding queued ICE candidate from ${peerId}:`, e);
     }
   }
 }
 
 function send(obj) {
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(obj));
   }
 }
 
 async function updatePeers(peers) {
-  console.log(`[UPDATE] updatePeers called with: ${peers.length} peer(s)`);
-  console.log(`[UPDATE] Previous peer count: ${speakingState.size}`);
-  
-  if (peers.length > speakingState.size) {
-    console.log(`[UPDATE] NEW PEERS DETECTED! Going from ${speakingState.size} to ${peers.length}`);
-  }
-  
+  if (!Array.isArray(peers)) return;
   peersListEl.innerHTML = "";
-  const newPeerIds = new Set(peers.map((p) => p.id));
+  const newPeerIds = new Set(peers.map((p) => String(p.id)));
   const oldPeerIds = new Set(speakingState.keys());
 
-  // Create peer connections for new remote peers
   for (const p of peers) {
-    const isSelfFlag = p.id === myId;
-    console.log(`[UPDATE] Processing peer: ${p.nick} (id=${p.id}, self=${p.self}, isSelf=${isSelfFlag})`);
-    if (!isSelfFlag && !peerConnections.has(p.id)) {
-      console.log(`[UPDATE] -> CREATING CONNECTION to ${p.nick}`);
-      await makeOfferTo(p.id);
-    } else if (isSelfFlag) {
-      console.log(`[UPDATE] -> This is me (${p.nick})`);
-    } else {
-      console.log(`[UPDATE] -> Already have connection to ${p.nick}`);
+    const peerId = String(p.id);
+    const isSelf = peerId === String(myId);
+    if (
+      !isSelf &&
+      !peerConnections.has(peerId) &&
+      String(myId).localeCompare(peerId) < 0
+    ) {
+      await makeOfferTo(peerId);
     }
   }
 
-  // Display all peers
   for (const p of peers) {
-    console.log(`Displaying peer: ${p.nick} (${p.id}, self=${p.self === p.id})`);
+    const peerId = String(p.id);
     const li = document.createElement("li");
     li.className = "lp-peer-card";
 
@@ -407,20 +368,20 @@ async function updatePeers(peers) {
 
     const metaEl = document.createElement("div");
     metaEl.className = "lp-peer-meta";
-    const isSelf = p.id === myId;
+    const isSelf = peerId === String(myId);
     metaEl.textContent = isSelf ? "You" : "Connected";
 
     main.appendChild(nameEl);
     main.appendChild(metaEl);
     li.appendChild(avatar);
     li.appendChild(main);
+    if (remoteAudioElements.has(peerId)) {
+      li.appendChild(remoteAudioElements.get(peerId));
+    }
     peersListEl.appendChild(li);
-    console.log(`  Added UI for ${p.nick}`);
 
-    // Create or update speaking state
-    if (!speakingState.has(p.id)) {
-      console.log(`  Created speaking state for ${p.id}`);
-      speakingState.set(p.id, {
+    if (!speakingState.has(peerId)) {
+      speakingState.set(peerId, {
         cardEl: li,
         analyser: null,
         source: null,
@@ -428,26 +389,27 @@ async function updatePeers(peers) {
         self: isSelf,
       });
     } else {
-      const state = speakingState.get(p.id);
+      const state = speakingState.get(peerId);
       state.cardEl = li;
-      console.log(`  Updated cardEl for existing peer ${p.id}`);
     }
   }
 
-  // Clean up removed peers
   for (const peerId of oldPeerIds) {
     if (!newPeerIds.has(peerId)) {
       const pc = peerConnections.get(peerId);
       if (pc) pc.close();
       const peerState = speakingState.get(peerId);
-      if (peerState && peerState.animId) cancelAnimationFrame(peerState.animId);
+      if (peerState?.animId) cancelAnimationFrame(peerState.animId);
+      peerState?.source?.disconnect();
       peerConnections.delete(peerId);
       remoteStreams.delete(peerId);
+      pendingIceCandidates.delete(peerId);
+      remoteAudioElements.get(peerId)?.remove();
+      remoteAudioElements.delete(peerId);
       speakingState.delete(peerId);
     }
   }
 
-  // Start analysers
   for (const [peerId, peerState] of speakingState.entries()) {
     if (peerState.self && !peerState.analyser && localStream) {
       attachSpeakingAnalyser(peerState, localStream, true);
@@ -459,48 +421,42 @@ async function updatePeers(peers) {
 }
 
 function attachRemoteStream(peerId, stream) {
-  console.log(`[AUDIO] attachRemoteStream for ${peerId}`);
-  console.log(`[AUDIO] Stream ID: ${stream.id}, tracks: ${stream.getTracks().length}`);
-  stream.getTracks().forEach((t, i) => {
-    console.log(`[AUDIO]   Track ${i}: kind=${t.kind}, enabled=${t.enabled}`);
-  });
-  
-  const audio = document.createElement("audio");
-  audio.autoplay = true;
-  audio.playsInline = true;
+  remoteStreams.set(peerId, stream);
+  let audio = remoteAudioElements.get(peerId);
+  if (!audio) {
+    audio = document.createElement("audio");
+    audio.className = "lp-peer-audio";
+    audio.autoplay = true;
+    audio.controls = true;
+    audio.setAttribute("aria-label", "Remote participant audio");
+    remoteAudioElements.set(peerId, audio);
+  }
   audio.srcObject = stream;
-  document.body.appendChild(audio);
-  // Attempt to play; browsers may block autoplay without interaction
-  audio.play().catch((err) => {
-    console.warn(`[AUDIO] autoplay failed for ${peerId}:`, err);
-    // try again after a short delay (sometimes audio system needs time)
-    setTimeout(() => audio.play().catch(() => {}), 500);
-  });
-  console.log(`[AUDIO] Audio element created for ${peerId}, autoplay=${audio.autoplay}`);
-
   const peerState = speakingState.get(peerId);
-  if (peerState && !peerState.analyser) {
-    console.log(`[AUDIO] Attaching analyser for ${peerId}`);
+  if (peerState) peerState.cardEl.appendChild(audio);
+  audio.play().catch((err) => {
+    console.warn(`[AUDIO] Could not autoplay audio from ${peerId}:`, err);
+    statusEl.textContent = "Press play on the participant audio control to hear them.";
+  });
+
+  if (peerState && !peerState.analyser && stream.getAudioTracks().length) {
     attachSpeakingAnalyser(peerState, stream, false);
-  } else if (!peerState) {
-    console.error(`[AUDIO] No peer state found for ${peerId}`);
   }
 }
 
 function attachSpeakingAnalyser(peerState, stream, isSelf) {
-  console.log(`[ANALYSER] attachSpeakingAnalyser (self=${isSelf})`);
+  if (!stream.getAudioTracks().length) return;
+  if (peerState.animId) cancelAnimationFrame(peerState.animId);
+  peerState.source?.disconnect();
+
   if (!audioContext) {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    console.log(`[ANALYSER] Created audio context, state: ${audioContext.state}`);
   }
 
-  // Resume audio context on first interaction
   if (audioContext.state === "suspended") {
-    console.log(`[ANALYSER] Resuming suspended audio context`);
-    audioContext.resume();
+    audioContext.resume().catch((err) => console.warn("Could not resume audio analysis:", err));
   }
 
-  console.log(`[ANALYSER] Creating media stream source, stream tracks: ${stream.getTracks().length}`);
   const source = audioContext.createMediaStreamSource(stream);
   const analyser = audioContext.createAnalyser();
   analyser.fftSize = 512;
@@ -523,10 +479,8 @@ function attachSpeakingAnalyser(peerState, stream, isSelf) {
       speaking
     );
 
-    // Broadcast speaking state when it changes (only for self)
     if (isSelf && speaking !== lastSpeakingState) {
       lastSpeakingState = speaking;
-      console.log(`[BROADCAST] You are now ${speaking ? "speaking" : "quiet"}`);
       send({ type: "speaking", speaking: speaking, from: myId });
     }
 
@@ -535,19 +489,41 @@ function attachSpeakingAnalyser(peerState, stream, isSelf) {
 
   tick();
   peerState.animId = animId;
-  console.log(`[ANALYSER] Analyser attached and running`);
 }
 
-function swapLocalStream(newStream) {
-  localStream.getTracks().forEach((t) => t.stop());
-  localStream = newStream;
-
-  for (const pc of peerConnections.values()) {
-    localStream.getTracks().forEach((track) => {
-      const sender = pc.getSenders().find((s) => s.track && s.track.kind === track.kind);
-      if (sender) sender.replaceTrack(track);
-    });
+async function swapLocalStream(newStream) {
+  const previousStream = localStream;
+  const previousTrack = previousStream.getAudioTracks()[0];
+  const newTrack = newStream.getAudioTracks()[0];
+  if (!newTrack) {
+    newStream.getTracks().forEach((track) => track.stop());
+    throw new Error("The selected microphone did not provide an audio track.");
   }
+  newTrack.enabled = !isMuted;
+
+  const replacedSenders = [];
+  try {
+    for (const pc of peerConnections.values()) {
+      const sender = pc.getSenders().find((candidate) => candidate.track?.kind === "audio");
+      if (sender) {
+        await sender.replaceTrack(newTrack);
+        replacedSenders.push(sender);
+      }
+    }
+  } catch (error) {
+    try {
+      await Promise.all(
+        replacedSenders.map((sender) => sender.replaceTrack(previousTrack)),
+      );
+    } catch (rollbackError) {
+      console.error("Could not restore the previous microphone track:", rollbackError);
+    }
+    newStream.getTracks().forEach((track) => track.stop());
+    throw error;
+  }
+
+  localStream = new MediaStream([newTrack]);
+  previousStream.getTracks().forEach((track) => track.stop());
 
   const selfPeer = [...speakingState.values()].find((s) => s.self);
   if (selfPeer) attachSpeakingAnalyser(selfPeer, localStream, true);
@@ -556,7 +532,7 @@ function swapLocalStream(newStream) {
 
 function handleSpeakingState(peerId, speaking) {
   console.log(`[SPEAK] Peer ${peerId} is ${speaking ? "speaking" : "quiet"}`);
-  const peerState = speakingState.get(peerId);
+  const peerState = speakingState.get(String(peerId));
   if (peerState) {
     peerState.cardEl.classList.toggle("lp-speaking-other", speaking);
   }
@@ -570,8 +546,14 @@ function cleanupAndLeave() {
   peerConnections.clear();
   for (const state of speakingState.values()) {
     if (state.animId) cancelAnimationFrame(state.animId);
+    state.source?.disconnect();
   }
   speakingState.clear();
   localStream?.getTracks().forEach((t) => t.stop());
+  for (const audio of remoteAudioElements.values()) {
+    audio.pause();
+    audio.srcObject = null;
+  }
+  remoteAudioElements.clear();
   window.location.href = "index.html";
 }

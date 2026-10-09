@@ -181,6 +181,30 @@ body.lp-body {
   transform: translateY(-1px);
 }
 
+.lp-label {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.lp-room-code {
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-form-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.lp-card-hero {
+  margin-top: 20px;
+}
+
 /* ============================================================
    BUTTONS
    ============================================================ */
@@ -225,6 +249,12 @@ body.lp-body {
   transform: translateY(0);
 }
 
+.lp-button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.45);
+  opacity: 0.55;
+}
+
 /* ============================================================
    TALK PAGE
    ============================================================ */
@@ -243,7 +273,25 @@ body.lp-body {
 
 .lp-main {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 3fr) minmax(260px, 1fr);
+  gap: 20px;
+}
+
+.lp-room-label {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.lp-room-label strong {
+  color: var(--text);
+  font-size: 1.15rem;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-call-sidebar {
+  display: grid;
+  align-content: start;
   gap: 20px;
 }
 
@@ -280,6 +328,11 @@ body.lp-body {
 .lp-peer-meta {
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.lp-peer-audio {
+  width: 100%;
+  height: 36px;
 }
 
 /* Speaking glows */
@@ -336,6 +389,10 @@ body.lp-body {
   .lp-main-layout,
   .lp-main {
     grid-template-columns: 1fr;
+  }
+
+  body.lp-body {
+    padding: 16px;
   }
 }
 /* ============================================================

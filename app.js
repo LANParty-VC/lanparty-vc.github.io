@@ -68,14 +68,42 @@ if (document.getElementById("join-form")) {
   (() => {
     const form = document.getElementById("join-form");
     const nickInput = document.getElementById("nickname");
+    const roomInput = document.getElementById("room-code");
+
+    form.querySelectorAll('button[name="action"]').forEach((button) => {
+      button.addEventListener("click", () => {
+        if (button.value !== "join") roomInput.setCustomValidity("");
+      });
+    });
 
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       const nick = nickInput.value.trim();
+      const roomCode = roomInput.value.trim();
+      const action = e.submitter?.value;
       if (!nick) return;
 
-      const params = new URLSearchParams({ nick });
+      if (action === "network") {
+        const params = new URLSearchParams({ nick, mode: "network" });
+        window.location.href = `talk.html?${params.toString()}`;
+        return;
+      }
+
+      if (action === "join" && !/^\d{6}$/.test(roomCode)) {
+        roomInput.setCustomValidity("Enter a six-digit room code to join.");
+        roomInput.reportValidity();
+        return;
+      }
+
+      roomInput.setCustomValidity("");
+      const code =
+        action === "join"
+          ? roomCode
+          : String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
+      const params = new URLSearchParams({ nick, room: code, mode: "code" });
       window.location.href = `talk.html?${params.toString()}`;
     });
+
+    roomInput.addEventListener("input", () => roomInput.setCustomValidity(""));
   })();
 }

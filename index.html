@@ -15,17 +15,17 @@
     <header class="lp-topbar">
       <div class="lp-logo">LANParty VC</div>
       <div class="lp-topbar-right">
-        <span class="lp-pill">LAN‑only</span>
-        <span class="lp-pill lp-pill-soft">Peer‑to‑peer audio</span>
+        <span class="lp-pill">Network + rooms</span>
+        <span class="lp-pill lp-pill-soft">Peer-to-peer audio</span>
       </div>
     </header>
 
     <main class="lp-main-layout">
       <section class="lp-hero">
-        <h1 class="lp-hero-title">Drop‑in voice for your LAN.</h1>
+        <h1 class="lp-hero-title">Drop‑in voice calls.</h1>
         <p class="lp-hero-subtitle">
-          Everyone on the same network automatically lands in the same room.
-          No codes, no accounts—just a shared call.
+          Join others on your network automatically, or share a six-digit room
+          code with friends on other networks.
         </p>
 
         <form id="join-form" class="lp-card lp-card-hero">
@@ -40,20 +40,61 @@
             />
           </label>
 
-          <button class="lp-button lp-button-primary" type="submit">
-            Join network call
-          </button>
+          <label class="lp-label">
+            Room code
+            <input
+              id="room-code"
+              class="lp-input lp-room-code"
+              placeholder="6-digit code"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+              aria-describedby="room-help"
+            />
+          </label>
+          <p id="room-help" class="lp-mini-note">
+            Join your network automatically, create a code room, or enter a code to join.
+          </p>
+
+          <div class="lp-form-actions">
+            <button
+              class="lp-button lp-button-primary"
+              type="submit"
+              name="action"
+              value="network"
+            >
+              Join my network
+            </button>
+            <button
+              class="lp-button lp-button-secondary"
+              type="submit"
+              name="action"
+              value="create"
+            >
+              Create room
+            </button>
+            <button
+              class="lp-button lp-button-secondary"
+              type="submit"
+              name="action"
+              value="join"
+            >
+              Join room
+            </button>
+          </div>
         </form>
       </section>
 
       <aside class="lp-sidecard lp-card">
         <h2 class="lp-section-title lp-how-title">How it works</h2>
         <ul class="lp-bullets">
-          <li><span>1.</span> We derive a room from your public IP.</li>
-          <li><span>2.</span> Everyone behind the same router shares that room.</li>
-          <li><span>3.</span> Cards glow when people speak.</li>
+          <li><span>1.</span> Network rooms are matched using your public network address.</li>
+          <li><span>2.</span> Use a six-digit code to join a separate room.</li>
+          <li><span>3.</span> Audio connects peer-to-peer with WebRTC.</li>
         </ul>
-        <p class="lp-mini-note">Best on desktop Chromium / Firefox.</p>
+        <p class="lp-mini-note">
+          Network detection uses STUN; allow microphone access to join.
+        </p>
       </aside>
     </main>
   </div>
